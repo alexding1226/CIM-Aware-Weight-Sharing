@@ -5,7 +5,6 @@ import argparse
 from utils import *
 from weight_grad_share import *
 
-from models.RSDeit import RSVisionTransformer
 from models.RSDeit_wo_distance import RSVisionTransformer as RSVisionTransformer_wo_distance
 from models.RSDeit_distance_r1 import RSVisionTransformer as RSVisionTransformer_distance_r1
 
@@ -60,11 +59,7 @@ def get_parser():
     parser.add_argument("--lr_factor", type=float, default=0.7)
     parser.add_argument("--lr_patience", type=int, default=3)
 
-    parser.add_argument("--no_grad_share", action="store_true")
-    parser.add_argument("--check_distance", type=float, default=-1)
     parser.add_argument("--check_distance_value", type=float, default=-1)
-    parser.add_argument("--save_qkv_list",type=str,default=None)
-    parser.add_argument("--load_qkv_list",type=str,default=None)
 
     parser.add_argument("--qkv_weight", type=float, default=1.0)
     parser.add_argument("--pred_weight", type=float, default=0.0)
@@ -81,17 +76,14 @@ def get_parser():
     parser.add_argument("--share_every", type=int, default=15)
     parser.add_argument("--start_share_epoch", type=int, default=15)
     parser.add_argument("--save_every", type=int, default=5)
-    parser.add_argument("--routing_group", type=int, default=1)
-    parser.add_argument("--macro_width", type=int, default=64)
+    parser.add_argument("--macro_width", type=int, default=16)
     parser.add_argument("--macro_height", type=int, default=64)
-    parser.add_argument("--share_height_type", type=str, default="whole") # macro, whole
-    parser.add_argument("--flow", type=str, default="row")
+    parser.add_argument("--share_height_type", type=str, default="whole") # whole or macro. whole means the sharing height meets the weight height, macro means the sharing height is the macro height
+    parser.add_argument("--flow", type=str, default="row") # define the direction of sharing, row or column
     parser.add_argument("--boundary",type=float,default=100.0)
     parser.add_argument("--min_sharing_rate_per_macro",type=float,default=0.8)
 
-    parser.add_argument("--with_dist", action="store_true")
     parser.add_argument("--dist_type", type=str, default="euclidean")
-    
 
     parser.add_argument("--load_qkv_mask", type=str, default=None)
 
@@ -134,13 +126,7 @@ def main():
         model_args = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, no_embed_class=True, init_values=1e-6)
     else:
         model_args = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12)
-    if args.with_dist:
-        if args.routing_group == 1:
-            model = RSVisionTransformer_distance_r1(**model_args)
-        else:
-            model = RSVisionTransformer(**model_args)
-    else:
-        model = RSVisionTransformer_wo_distance(**model_args)
+    model = RSVisionTransformer_distance_r1(**model_args)
     teacher = RSVisionTransformer_wo_distance(**model_args)
     model.to(device)
     teacher.to(device)
@@ -157,14 +143,14 @@ def main():
     if args.loss_type == "ce":
         loss_fn = losses.CEloss()
     elif args.loss_type == "dist":
-        if args.with_dist:
+        # if args.with_dist:
             loss_fn = losses.Distlossqkv_hidden_dist(qkv_weight = args.qkv_weight,pred_weight = args.pred_weight,
                                             soft_weight = args.soft_weight,hidden_weight = args.hidden_weight,dist_weight=args.dist_weight,
                                             teacher = teacher,Ar = args.Ar)
-        else:
-            loss_fn = losses.Distlossqkv_hidden(qkv_weight = args.qkv_weight,pred_weight = args.pred_weight,
-                                            soft_weight = args.soft_weight,hidden_weight = args.hidden_weight,
-                                            teacher = teacher,Ar = args.Ar)
+        # else:
+        #     loss_fn = losses.Distlossqkv_hidden(qkv_weight = args.qkv_weight,pred_weight = args.pred_weight,
+        #                                     soft_weight = args.soft_weight,hidden_weight = args.hidden_weight,
+        #                                     teacher = teacher,Ar = args.Ar)
     # elif args.loss_type == "wodist":
     #     loss_fn = losses.Distlossqkv_hidden(qkv_weight = args.qkv_weight,pred_weight = args.pred_weight,
     #                                         soft_weight = args.soft_weight,hidden_weight = args.hidden_weight,
@@ -201,8 +187,8 @@ def main():
         model.load_state_dict(torch.load(args.load_checkpoint))
         model.to(device)
 
-    if args.check_distance > 0 or args.check_distance_value > 0:
-        check_distance(model=model,qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,routing_group=args.routing_group,macro_width=args.macro_width,args=args, distance_boundary=args.check_distance_value)
+    if args.check_distance_value > 0:
+        check_distance(model=model,macro_width=args.macro_width,args=args, distance_boundary=args.check_distance_value)
 
     if args.val_before_share:
         val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
@@ -219,21 +205,11 @@ def main():
             f.close()
         model.set_mask(qkv_mask, fc1_mask=None, fc2_mask=None, flow=args.flow, macro_width=args.macro_width, macro_height=args.macro_height, dist_type=args.dist_type)
     else:
-        weight_share_all(model=model,qkv_ratio=args.qkv_ratio,fc1_ratio=args.fc1_ratio,fc2_ratio=args.fc2_ratio,routing_group=args.routing_group,no_sharing=args.no_share_initial,macro_width=args.macro_width,args=args,distance_boundary=args.boundary)
+        weight_share_all(model=model,qkv_ratio=args.qkv_ratio,fc1_ratio=args.fc1_ratio,fc2_ratio=args.fc2_ratio,no_sharing=args.no_share_initial,macro_width=args.macro_width,args=args,distance_boundary=args.boundary)
 
-    if args.check_distance or args.check_distance_value > 0:
-        check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,routing_group=args.routing_group,macro_width=args.macro_width,args=args, distance_boundary=args.check_distance_value)
+    if args.check_distance_value > 0:
+        check_distance(model=model ,macro_width=args.macro_width,args=args, distance_boundary=args.check_distance_value)
 
-    if args.save_qkv_list is not None:
-        print("save qkv list : ", args.save_qkv_list)
-        with open(args.save_qkv_list, 'wb') as f:
-            pickle.dump(idx_mapping, f)
-            f.close()
-        with open(args.save_qkv_list, 'rb') as f:
-            idx_mapping2 = pickle.load(f)
-            f.close()
-
-        assert (idx_mapping == idx_mapping2)
 
     
     
@@ -282,18 +258,13 @@ def main():
 
         
         
-        if args.no_grad_share:
-            idx_mapping = None
-
-        if idx_mapping != None:
-            check_weight(model,idx_mapping)
-            print("pass check weight")
+        idx_mapping = None
 
 
 
         train_epochs(model, args.device, train_dataloader, val_dataloader, eval_dataloader, loss_fn, 
                      optimizer, scheduler, teacher=teacher, epochs=(start_epoch+1, args.epoch), current_best_acc=best_acc, 
-                     log_dir=args.log_dir, checkpoint=args.save_checkpoint, epoch_callback=epoch_callback,qkv_share_list=idx_mapping,
+                     log_dir=args.log_dir, checkpoint=args.save_checkpoint, epoch_callback=epoch_callback,
                      checkpoint_dir=args.checkpoint_dir,args=args)
         
 

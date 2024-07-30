@@ -12,6 +12,17 @@ from torchvision import transforms, utils
 import os
 import weight_grad_share
 
+def ratio_scheduler(initial_ratio, end_ratio, total_steps, end_step):
+    scheduler_list = []
+    for i in range(total_steps):
+        if i < end_step:
+            ratio = initial_ratio + (end_ratio - initial_ratio) * i / end_step
+        else:
+            ratio = end_ratio
+        scheduler_list.append(ratio)
+    return scheduler_list
+
+
 def validate(model, device, dataloader, loss_fn, epoch):
     model.to(device)
     model.eval()
@@ -85,7 +96,7 @@ def log_to_tensorboard(writer, epoch, prefix, info):
             raise NotImplementedError
     writer.flush()
 
-def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teacher=None, qkv_share_list=None, after_share=True, 
+def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teacher=None, after_share=True, 
                     val_dataloader=None, checkpoint_dir=None, scheduler=None, best_shared_acc = 0, start_share_epoch=0):
     model.to(device)
     model.train()
@@ -121,18 +132,10 @@ def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teache
             add_dist = True
 
             start_time = time.time()
-            # if qkv_share_list is not None:
-                # weight_grad_share.grad_share_qkv(model, qkv_share_list)
-                # weight_grad_share.check_grad(model, qkv_share_list)
-                #model.grad_share_qkv(qkv_share_list)
-                # model.check_grad(qkv_share_list)
 
             use_time = time.time() - start_time
             optimizer.step()
 
-            # if qkv_share_list is not None:
-            #     weight_grad_share.check_weight(model, qkv_share_list)
-            #     model.check_weight(qkv_share_list)
 
             agg_loss += loss.item()
             for loss_term in loss_fn.loss_terms():
@@ -170,9 +173,9 @@ def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teache
             if idx % saving_every == 0 and idx > 0:
                 val_acc, val_loss, val_loss_detail = validate(model, device, val_dataloader, loss_fn, epoch)
                 print('Validation: Loss: %7.5f - Acc: %6.3f' % (val_loss, val_acc))
-                torch.save(model.state_dict(), checkpoint_dir + "/checkpoint_%i_%i.pt"%(epoch, idx))
+                # torch.save(model.state_dict(), checkpoint_dir + "/checkpoint_%i_%i.pt"%(epoch, idx))
                 with open(checkpoint_dir +'/acc_log.txt', 'a') as f:
-                    f.write(str(idx)+","+str(val_acc)+"\n")
+                    f.write(str(idx)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
                     f.close()
                 if val_acc > best_acc and epoch > start_share_epoch:
                     best_acc = val_acc
@@ -217,7 +220,7 @@ def epoch_callback(epoch, acc, loss, best_acc, model, optimizer, scheduler):
     scheduler.step(acc)
 def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloader, loss_fn, optimizer, scheduler, 
                  epochs, teacher=None, current_best_acc=0, log_dir=None, checkpoint_interval=None, checkpoint=None, 
-                 epoch_callback=None, qkv_share_list=None, checkpoint_dir=None,args=None):
+                 epoch_callback=None, checkpoint_dir=None,args=None):
     
     log_dir = log_dir or '%s' % time.ctime().replace(' ', '_')
     log_dir = 'runs/' + log_dir
@@ -247,13 +250,15 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
 
     total_begin_time = time.time()
     with open(checkpoint_dir +'/acc_log.txt', 'w') as f:
-        f.write("Epoch,Acc\n")
-        f.write(str(epochs[0]-1)+","+str(current_best_acc)+"\n")
+        # f.write("Epoch,Acc\n")
+        # f.write(str(epochs[0]-1)+","+str(current_best_acc)+"\n")
+        f.write("Epoch,Acc,LR\n")
+        f.write(str(epochs[0]-1)+","+str(current_best_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
         f.close()
     for epoch in range(epochs[0], epochs[1]+1):
         # Training
         begin_time = time.time()
-        train_acc, train_loss, train_loss_detail, best_shared_acc = train_one_epoch(model, device, train_dataloader, loss_fn, optimizer, epoch, teacher = teacher, qkv_share_list=qkv_share_list, 
+        train_acc, train_loss, train_loss_detail, best_shared_acc = train_one_epoch(model, device, train_dataloader, loss_fn, optimizer, epoch, teacher = teacher, 
                                                                    after_share=after_share, val_dataloader=val_dataloader, checkpoint_dir=checkpoint_dir, scheduler=scheduler, best_shared_acc=best_shared_acc, start_share_epoch=args.start_share_epoch)
         after_share = False
 
@@ -298,8 +303,9 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
             total_seconds = ellapsed % 60
             print('Epoch %d: Loss-train: %7.5f - Loss-val: %7.5f - Acc-train: %6.3f - Acc-val: %6.3f - LR: %10.10f - Epoch Ellapsed: %02d:%02d - Total Ellapsed: %02d:%02d' 
                   % (epoch, train_loss, val_loss, train_acc, val_acc, optimizer.param_groups[0]['lr'], minutes, seconds, total_minutes, total_seconds))
+            
             with open(checkpoint_dir +'/acc_log.txt', 'a') as f:
-                f.write(str(epoch)+","+str(val_acc)+"\n")
+                f.write(str(epochs[0]-1)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
                 f.close()
             print('Loss Detail: ', end='')
             for loss_term in loss_fn.loss_terms():
@@ -313,10 +319,10 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i.pt"%epoch)
 
         if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
-            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,routing_group=args.routing_group,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
             print("start sharing")
-            weight_grad_share.weight_share_all(model=model, qkv_ratio=args.qkv_ratio, fc1_ratio=args.fc1_ratio, fc2_ratio=args.fc2_ratio,routing_group=args.routing_group,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
-            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,routing_group=args.routing_group,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.weight_share_all(model=model, qkv_ratio=args.qkv_ratio, fc1_ratio=args.fc1_ratio, fc2_ratio=args.fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
+            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
 
             print("Shared Checkpoint saved.")
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i_shared.pt"%epoch)

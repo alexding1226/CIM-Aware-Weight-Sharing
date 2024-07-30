@@ -205,7 +205,7 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
         return new_weight, num_sharing
     
 @torch.no_grad()
-def determin_boundary(weight, boundary_ratio, share_height = 768,macro_width = 64, flow = "row", dist_type = "euclidean", boundary_value = -1):
+def determin_boundary(weight, share_height = 768,macro_width = 64, flow = "row", dist_type = "euclidean", boundary_value = -1):
     mat_width, mat_height = weight.shape 
     upd_time_row = mat_width // macro_width 
     head_weight_list = []
@@ -221,7 +221,6 @@ def determin_boundary(weight, boundary_ratio, share_height = 768,macro_width = 6
                 head_weight_list.append(weight[j*macro_width:(j+1)*macro_width,i*share_height:(i+1)*share_height])
     else:
         raise Exception("flow should be column or row")
-    boundary = 0
     
     for upd_time in range(upd_time_row*upd_time_col-1):
         # if (upd_time % upd_time_row == upd_time_row-1) and (flow == "row"): # the last submat of each row
@@ -236,17 +235,12 @@ def determin_boundary(weight, boundary_ratio, share_height = 768,macro_width = 6
 
         less_than_boundary = sort_value[sort_value < boundary_value]
         less_than_boundary_ratio = len(less_than_boundary) / len(sort_value)
-        boundary += sort_value[int(share_height*boundary_ratio)]
-    boundary /= (upd_time_row*upd_time_col-1)
 
-    if boundary_value == -1:
-        return boundary
-    else:
-        return less_than_boundary_ratio
+    return less_than_boundary_ratio
     
 
 
-def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio,routing_group=32, no_sharing=False,macro_width=64,args=None,distance_boundary = 100.0, set_mask = True):
+def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro_width=64,args=None,distance_boundary = 100.0, set_mask = True):
     boundary_list = [distance_boundary]*12
     sharing_block_list = []
     sharing_rate_list = [qkv_ratio] * 12
@@ -399,7 +393,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio,routing_group=32, no_sh
     #     pickle.dump([qkv_mask, fc1_mask, fc2_mask], f)
     
 
-def check_distance(model,qkv_ratio = 0.49,fc1_ratio = 0.49, fc2_ratio=0.49 , routing_group=32,macro_width=64,args=None, distance_boundary=-1):
+def check_distance(model,macro_width=64,args=None, distance_boundary=-1):
     dim = 768
     q_bound = []
     k_bound = []
@@ -419,23 +413,23 @@ def check_distance(model,qkv_ratio = 0.49,fc1_ratio = 0.49, fc2_ratio=0.49 , rou
         q_weight = weight[:dim,:]
         k_weight = weight[dim:dim*2,:]
         v_weight = weight[dim*2:,:]
-        q_boundary = determin_boundary(q_weight, boundary_ratio=qkv_ratio, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
-        k_boundary = determin_boundary(k_weight, boundary_ratio=qkv_ratio, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
-        v_boundary = determin_boundary(v_weight, boundary_ratio=qkv_ratio, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
+        q_boundary = determin_boundary(q_weight, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
+        k_boundary = determin_boundary(k_weight, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
+        v_boundary = determin_boundary(v_weight, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
         q_bound.append(float(q_boundary))
         k_bound.append(float(k_boundary))
         v_bound.append(float(v_boundary))
 
         num_heads = 3072//macro_width ## fc1
         weight = model.blocks[i].mlp.fc1.weight
-        fc1_boundary  = determin_boundary(weight,fc1_ratio, share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
+        fc1_boundary  = determin_boundary(weight,share_height=share_height,macro_width=args.macro_width, flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
         fc1_bound.append(float(fc1_boundary))
 
         num_heads = 768//macro_width ## fc2
         weight = model.blocks[i].mlp.fc2.weight
-        fc2_boundary = determin_boundary(weight,fc2_ratio, share_height=share_height_fc2, macro_width=args.macro_width,flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
+        fc2_boundary = determin_boundary(weight, share_height=share_height_fc2, macro_width=args.macro_width,flow=args.flow, dist_type = args.dist_type, boundary_value = distance_boundary)
         fc2_bound.append(float(fc2_boundary))
-    print("distance before sharing in ratio: ",qkv_ratio,fc1_ratio,fc2_ratio)
+    print("ratio of distance < ",distance_boundary)
     print("q distance : ",q_bound)
     print("k distance : ",k_bound)
     print("v distance : ",v_bound)
