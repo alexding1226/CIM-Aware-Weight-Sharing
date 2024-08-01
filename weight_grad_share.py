@@ -243,7 +243,9 @@ def determin_boundary(weight, share_height = 768,macro_width = 64, flow = "row",
 def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro_width=64,args=None,distance_boundary = 100.0, set_mask = True):
     boundary_list = [distance_boundary]*12
     sharing_block_list = []
-    sharing_rate_list = [qkv_ratio] * 12
+    # sharing_rate_list : [(qkv_ratio*block_ratio)*4, (qkv_ratio)*4, (qkv_ratio*(2-block_ratio))*4]
+    sharing_rate_list = [qkv_ratio*args.block_ratio]*4 + [qkv_ratio]*4 + [qkv_ratio*(2-args.block_ratio)]*4
+    
     dim = 768
     #idx_mapping = []
     qkv_mask = None
@@ -307,7 +309,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
 
     # fc1 weight
     boundary_list = [distance_boundary]*12
-    sharing_rate_list = [fc1_ratio]*12
+    sharing_rate_list = [fc1_ratio*args.block_ratio]*4 + [fc1_ratio]*4 + [fc1_ratio*(2-args.block_ratio)]*4
     sharing_block_list = []
     fc1_mask = None
 
@@ -342,7 +344,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
 
     # fc2 weight
     boundary_list = [distance_boundary]*12
-    sharing_rate_list = [fc2_ratio]*12
+    sharing_rate_list = [fc2_ratio*args.block_ratio]*4 + [fc2_ratio]*4 + [fc2_ratio*(2-args.block_ratio)]*4
     sharing_block_list = []
 
     if args.share_height_type == "macro":

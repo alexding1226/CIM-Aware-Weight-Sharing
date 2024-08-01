@@ -84,6 +84,7 @@ def get_parser():
     parser.add_argument("--min_sharing_rate_per_macro",type=float,default=0.8) # ex: 0.8 means that at least 0.8 * share_ratio of rows in one macro should be shared (0.8 * 0.5 = 0.4, 26 in 64 rows should be shared as a minimum amount)
 
     parser.add_argument("--dist_type", type=str, default="euclidean")
+    parser.add_argument("--block_ratio", type=float, default=1.0) # first 4 blocks are block ratio * share_ratio, middle 4 blocks are share_ratio, last 4 blocks are (2 - block ratio) * share_ratio
 
     parser.add_argument("--load_qkv_mask", type=str, default=None)
 

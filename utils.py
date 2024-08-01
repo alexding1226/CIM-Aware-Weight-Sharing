@@ -217,7 +217,7 @@ def epoch_callback(epoch, acc, loss, best_acc, model, optimizer, scheduler):
         'acc': best_acc,
     }, 'progress.pt')
 
-    scheduler.step(acc)
+    
 def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloader, loss_fn, optimizer, scheduler, 
                  epochs, teacher=None, current_best_acc=0, log_dir=None, checkpoint_interval=None, checkpoint=None, 
                  epoch_callback=None, checkpoint_dir=None,args=None):
@@ -305,12 +305,14 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
                   % (epoch, train_loss, val_loss, train_acc, val_acc, optimizer.param_groups[0]['lr'], minutes, seconds, total_minutes, total_seconds))
             
             with open(checkpoint_dir +'/acc_log.txt', 'a') as f:
-                f.write(str(epochs[0]-1)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
+                f.write(str(epoch)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
                 f.close()
             print('Loss Detail: ', end='')
             for loss_term in loss_fn.loss_terms():
                 print('%s: %7.5f - ' % (loss_term, val_loss_detail[loss_term]), end='')
             print()
+
+            scheduler.step(val_acc)
         # if epoch_callback is not None:
         #     epoch_callback(epoch, val_acc, val_loss, current_best_acc, model, optimizer, scheduler)
 
