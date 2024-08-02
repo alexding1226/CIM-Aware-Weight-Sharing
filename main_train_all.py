@@ -1,4 +1,4 @@
-import timm
+# import timm
 import torch
 from Imagenet_dataset import ImagenetDataset
 import argparse
@@ -86,6 +86,16 @@ def get_parser():
     parser.add_argument("--dist_type", type=str, default="euclidean")
 
     parser.add_argument("--load_qkv_mask", type=str, default=None)
+
+
+    # add ratio scheduler
+    parser.add_argument("--qkv_ratio_step", type=float, default=0.1)
+    parser.add_argument("--fc1_ratio_step", type=float, default=0.1)
+    parser.add_argument("--fc2_ratio_step", type=float, default=0.1)
+
+    parser.add_argument("--max_qkv_ratio", type=float, default=0.5)
+    parser.add_argument("--max_fc1_ratio", type=float, default=0.1)
+    parser.add_argument("--max_fc2_ratio", type=float, default=0.1)
 
     return parser
 
@@ -260,12 +270,30 @@ def main():
         
         idx_mapping = None
 
+        train_epochs_with_weight_sharing_ratio_scheduler(
+            model, 
+            args.device, 
+            train_dataloader, 
+            val_dataloader, 
+            eval_dataloader, 
+            loss_fn, 
+            optimizer, 
+            scheduler, 
+            teacher=teacher, 
+            epochs=(start_epoch+1, args.epoch), 
+            current_best_acc=best_acc, 
+            log_dir=args.log_dir, 
+            checkpoint=args.save_checkpoint, 
+            epoch_callback=epoch_callback,
+            checkpoint_dir=args.checkpoint_dir,
+            args=args
+        )
 
-
-        train_epochs(model, args.device, train_dataloader, val_dataloader, eval_dataloader, loss_fn, 
-                     optimizer, scheduler, teacher=teacher, epochs=(start_epoch+1, args.epoch), current_best_acc=best_acc, 
-                     log_dir=args.log_dir, checkpoint=args.save_checkpoint, epoch_callback=epoch_callback,
-                     checkpoint_dir=args.checkpoint_dir,args=args)
+        # train_epochs(model, args.device, train_dataloader, val_dataloader, eval_dataloader, loss_fn, 
+        #              optimizer, scheduler, teacher=teacher, epochs=(start_epoch+1, args.epoch), current_best_acc=best_acc, 
+        #              log_dir=args.log_dir, checkpoint=args.save_checkpoint, epoch_callback=epoch_callback,
+        #              checkpoint_dir=args.checkpoint_dir,args=args)
+    
         
 
 if __name__ == '__main__':
