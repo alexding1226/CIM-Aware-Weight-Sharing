@@ -218,7 +218,7 @@ def epoch_callback(epoch, acc, loss, best_acc, model, optimizer, scheduler):
         'acc': best_acc,
     }, 'progress.pt')
 
-    scheduler.step(acc)
+    # scheduler.step(acc)
 
 # Pony's addition: to do qkv's weight sharing ratio scheduler
 def train_epochs_with_weight_sharing_ratio_scheduler(
@@ -475,12 +475,14 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
                   % (epoch, train_loss, val_loss, train_acc, val_acc, optimizer.param_groups[0]['lr'], minutes, seconds, total_minutes, total_seconds))
             
             with open(checkpoint_dir +'/acc_log.txt', 'a') as f:
-                f.write(str(epochs[0]-1)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
+                f.write(str(epoch)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
                 f.close()
             print('Loss Detail: ', end='')
             for loss_term in loss_fn.loss_terms():
                 print('%s: %7.5f - ' % (loss_term, val_loss_detail[loss_term]), end='')
             print()
+
+            scheduler.step(val_acc)
         # if epoch_callback is not None:
         #     epoch_callback(epoch, val_acc, val_loss, current_best_acc, model, optimizer, scheduler)
 
@@ -489,10 +491,10 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i.pt"%epoch)
 
         if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
-            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
             print("start sharing")
             weight_grad_share.weight_share_all(model=model, qkv_ratio=args.qkv_ratio, fc1_ratio=args.fc1_ratio, fc2_ratio=args.fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
-            weight_grad_share.check_distance(model=model, qkv_ratio=args.qkv_ratio-0.01, fc1_ratio=args.fc1_ratio-0.01, fc2_ratio=args.fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
 
             print("Shared Checkpoint saved.")
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i_shared.pt"%epoch)
