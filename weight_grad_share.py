@@ -132,9 +132,10 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
 
         no_share_row = 0
         i = 0
-        while sort_value[i] > distance_boundary or (no_share_row < num_no_sharing_row and i < share_height):
+        # while (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row) and i < share_height:
+        for i in range(share_height):
+            if not (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row):    break
             idx = sort_idx[i]
-            i += 1
             macro_idx = idx // macro_height
 
             if sort_value[i] > distance_boundary: # if the distance is larger than the boundary, then it has to not share. but still have a chance to train
@@ -146,7 +147,7 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
                 mask_share[idx] = False
                 no_share_row += 1
                 no_share_row_per_macro[macro_idx] += 1
-            
+            # i += 1
 
         if not no_sharing:
             head_weight_list[upd_time+1][:,mask_share] = head_weight_list[upd_time][:,mask_share]
@@ -293,7 +294,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
         # print("k_id_map:",k_idx_map)
         # print("v_id_map:",v_idx_map)
         print("use time : ",time.time()-start_time)
-        print(sharing_block_list)
+        print(f"sharing_block_list : {sharing_block_list}")
         print("mask diff average : ",sum(mask_diff_list)/len(mask_diff_list))
         # with open("qkv_mask.txt", "w") as f:
         #     for block_id in range(12):

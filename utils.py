@@ -365,22 +365,22 @@ def train_epochs_with_weight_sharing_ratio_scheduler(
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i.pt"%epoch)
 
         if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
-            weight_grad_share.check_distance(model=model, qkv_ratio=current_qkv_ratio-0.01, fc1_ratio=current_fc1_ratio-0.01, fc2_ratio=current_fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
             print("start sharing")
             weight_grad_share.weight_share_all(model=model, qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
-            weight_grad_share.check_distance(model=model, qkv_ratio=current_qkv_ratio-0.01, fc1_ratio=current_fc1_ratio-0.01, fc2_ratio=current_fc2_ratio-0.01,macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+            weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
 
             print("Shared Checkpoint saved.")
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i_shared.pt"%epoch)
-            print(validate(model, device, val_dataloader, loss_fn, epoch))
+            # print(validate(model, device, val_dataloader, loss_fn, epoch))
             after_share = True
 
-            current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(
-                current_qkv_ratio, current_fc1_ratio, current_fc2_ratio
-            )
+            current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args)
 
     
     val_acc, val_loss, val_loss_detail = validate(model, device, val_dataloader, loss_fn, epoch)
+    if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
+        print(val_acc, val_loss, val_loss_detail)
     print('Final acc: %6.3f' % val_acc)
     with open(checkpoint_dir +'/acc.txt', 'w') as f:
         f.write(str(val_acc))
