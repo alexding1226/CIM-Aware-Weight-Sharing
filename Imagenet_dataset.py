@@ -25,15 +25,15 @@ class ImagenetDataset(Dataset):
         ])
         with open(root_path + '/' + listfile, 'r') as file:
             lines = file.readlines()
-            # for line in lines:
-            #     t = line.split(' ')
-            #     self.image_list.append(t[0])
-            #     self.label_list.append(int(t[1][:-1]))
-            for line, idx in zip(lines, range(len(lines))):
+            for line in lines:
                 t = line.split(' ')
                 self.image_list.append(t[0])
                 self.label_list.append(int(t[1][:-1]))
-                if idx >= 100:  break
+            # for line, idx in zip(lines, range(len(lines))):
+            #     t = line.split(' ')
+            #     self.image_list.append(t[0])
+            #     self.label_list.append(int(t[1][:-1]))
+            #     if idx >= 100:  break
     def __len__(self):
         return len(self.image_list)
     def __getitem__(self, idx):

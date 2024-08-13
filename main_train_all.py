@@ -42,9 +42,9 @@ def get_parser():
     parser.add_argument('--log_image', action='store_true')
     # Training
     parser.add_argument("--train_aug", action="store_true")
-    parser.add_argument('--epoch', type=int, default=1, metavar='E')
-    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR')
-    parser.add_argument('--min_lr', type=float, default=1e-8, metavar='lr')
+    parser.add_argument('--epoch', type=int, default=10, metavar='E')
+    parser.add_argument('--lr', type=float, default=5e-5, metavar='LR')
+    parser.add_argument('--min_lr', type=float, default=5e-6, metavar='lr')
     parser.add_argument('--train_subset_size', type=int, default=-1, metavar='N')
     parser.add_argument('--train_batch_size', type=int, default=64, metavar='B')
     parser.add_argument('--save_checkpoint', type=str, default='checkpoint.pt')
@@ -70,9 +70,9 @@ def get_parser():
     parser.add_argument("--no_share_initial", action="store_true")
     parser.add_argument("--start_epoch",type=int,default=0)
 
-    parser.add_argument("--qkv_ratio", type=float, default=0.5)
-    parser.add_argument("--fc1_ratio", type=float, default=0.5)
-    parser.add_argument("--fc2_ratio", type=float, default=0.0)
+    parser.add_argument("--qkv_ratio", type=float, default=0.05)
+    parser.add_argument("--fc1_ratio", type=float, default=0.05)
+    parser.add_argument("--fc2_ratio", type=float, default=0.05)
     parser.add_argument("--share_every", type=int, default=15)
     parser.add_argument("--start_share_epoch", type=int, default=15)
     parser.add_argument("--save_every", type=int, default=5)
@@ -88,15 +88,18 @@ def get_parser():
 
     parser.add_argument("--load_qkv_mask", type=str, default=None)
 
+    parser.add_argument("--saving_every_step", type=int, default=2000)
+    
+
 
     # add ratio scheduler
-    parser.add_argument("--qkv_ratio_step", type=float, default=0.1)
-    parser.add_argument("--fc1_ratio_step", type=float, default=0.1)
-    parser.add_argument("--fc2_ratio_step", type=float, default=0.1)
-
     parser.add_argument("--max_qkv_ratio", type=float, default=0.5)
-    parser.add_argument("--max_fc1_ratio", type=float, default=0.1)
-    parser.add_argument("--max_fc2_ratio", type=float, default=0.1)
+    parser.add_argument("--max_fc1_ratio", type=float, default=0.5)
+    parser.add_argument("--max_fc2_ratio", type=float, default=0.3)
+
+    parser.add_argument("--ratio_change_epoch", type=int, default=0) # 0 means no change
+    parser.add_argument("--ratio_change_step", type=int, default=4000) # how many steps to change the ratio
+    parser.add_argument("--max_ratio_epoch", type=int, default=5)
 
     return parser
 
@@ -104,7 +107,7 @@ def get_dataloader(catlog_path, subset_size=None, batch_size=16, augamentation=F
     root_path = '/home/common/SharedDataset/ImageNet'
     num_workers = min(32, batch_size)
     dataset = ImagenetDataset(root_path, catlog_path, augamentation=augamentation)
-    print(len(dataset))
+    print("dataset length:",len(dataset))
     if subset_size is None:
         dataloader = DataLoader(
             dataset,
@@ -119,6 +122,7 @@ def get_dataloader(catlog_path, subset_size=None, batch_size=16, augamentation=F
             num_workers=num_workers,
             sampler=RandomSampler(dataset, num_samples=subset_size)
         )
+    print("dataloader length:",len(dataloader))
     return dataloader
 
 def set_seed(seed):
@@ -271,7 +275,7 @@ def main():
         
         idx_mapping = None
 
-        train_epochs_with_weight_sharing_ratio_scheduler(
+        train_epochs(
             model, 
             args.device, 
             train_dataloader, 

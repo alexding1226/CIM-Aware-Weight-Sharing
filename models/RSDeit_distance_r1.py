@@ -375,6 +375,7 @@ class RSVisionTransformer(nn.Module):
         self.macro_height = macro_height
         self.share_height_type = share_height_type
 
+
     def forward(self, x):
         x, qkv_list, hidden_list = self.forward_features(x)
         x = self.forward_head(x)

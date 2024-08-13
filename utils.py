@@ -23,6 +23,14 @@ def ratio_scheduler(initial_ratio, end_ratio, total_steps, end_step):
         scheduler_list.append(ratio)
     return scheduler_list
 
+def update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args, qkv_ratio_step, fc1_ratio_step, fc2_ratio_step):
+    def get_new_ratio(current_ratio, max_ratio, ratio_step):
+        return current_ratio + ratio_step if current_ratio + ratio_step < max_ratio else max_ratio
+    new_qkv_ratio = get_new_ratio(current_qkv_ratio, args.max_qkv_ratio, qkv_ratio_step)
+    new_fc1_ratio = get_new_ratio(current_fc1_ratio, args.max_fc1_ratio, fc1_ratio_step)
+    new_fc2_ratio = get_new_ratio(current_fc2_ratio, args.max_fc2_ratio, fc2_ratio_step)
+    return new_qkv_ratio, new_fc1_ratio, new_fc2_ratio
+
 
 def validate(model, device, dataloader, loss_fn, epoch):
     model.to(device)
@@ -98,7 +106,8 @@ def log_to_tensorboard(writer, epoch, prefix, info):
     writer.flush()
 
 def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teacher=None, after_share=True, 
-                    val_dataloader=None, checkpoint_dir=None, scheduler=None, best_shared_acc = 0, start_share_epoch=0):
+                    val_dataloader=None, checkpoint_dir=None, scheduler=None, best_shared_acc = 0, start_share_epoch=0, 
+                    qkv_ratio=0, fc1_ratio=0, fc2_ratio=0, qkv_ratio_step=0, fc1_ratio_step=0, fc2_ratio_step=0, ratio_change_step=4000, args = None):
     model.to(device)
     model.train()
     loss_fn.train()
@@ -115,6 +124,10 @@ def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teache
     moving_acc = []
     moving_dist = [0]
     add_dist = not after_share
+
+    current_qkv_ratio = qkv_ratio
+    current_fc1_ratio = fc1_ratio
+    current_fc2_ratio = fc2_ratio
 
     #print("len(dataloader): ", len(dataloader))
 
@@ -182,13 +195,21 @@ def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teache
                     best_acc = val_acc
                     torch.save(model.state_dict(), checkpoint_dir + "/checkpoint_best.pt")
                 scheduler.step(val_acc)
+            if idx % ratio_change_step == 0 and idx > 0:
+                current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args, qkv_ratio_step, fc1_ratio_step, fc2_ratio_step)
+                print("Current (qkv, fc1, fc2) ratios: (%.3f, %.3f, %.3f)" % (current_qkv_ratio, current_fc1_ratio, current_fc2_ratio))
+                weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+                print("start sharing")
+                weight_grad_share.weight_share_all(model=model, qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = True)
+                weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
+                add_dist = False
 
     agg_loss /= data_num
     for loss_term in loss_fn.loss_terms():
         agg_loss_detail[loss_term] /= data_num
     agg_acc /= data_num
 
-    return agg_acc, agg_loss, agg_loss_detail, best_acc
+    return agg_acc, agg_loss, agg_loss_detail, best_acc, qkv_ratio, fc1_ratio, fc2_ratio
 
 def evaluate(model, device, dataloader):
     model.to(device)
@@ -218,7 +239,7 @@ def epoch_callback(epoch, acc, loss, best_acc, model, optimizer, scheduler):
         'acc': best_acc,
     }, 'progress.pt')
 
-    # scheduler.step(acc)
+    #scheduler.step(acc)
 
 # Pony's addition: to do qkv's weight sharing ratio scheduler
 def train_epochs_with_weight_sharing_ratio_scheduler(
@@ -351,7 +372,7 @@ def train_epochs_with_weight_sharing_ratio_scheduler(
                   % (epoch, train_loss, val_loss, train_acc, val_acc, optimizer.param_groups[0]['lr'], minutes, seconds, total_minutes, total_seconds))
             
             with open(checkpoint_dir +'/acc_log.txt', 'a') as f:
-                f.write(str(epochs[0]-1)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
+                f.write(str(epoch)+","+str(val_acc)+","+str(optimizer.param_groups[0]['lr'])+"\n")
                 f.close()
             print('Loss Detail: ', end='')
             for loss_term in loss_fn.loss_terms():
@@ -367,17 +388,16 @@ def train_epochs_with_weight_sharing_ratio_scheduler(
         if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
             weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
             print("start sharing")
-            weight_grad_share.weight_share_all(model=model, qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
+            weight_grad_share.weight_share_all(model=model, qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = True)
             weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
 
             print("Shared Checkpoint saved.")
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i_shared.pt"%epoch)
             # print(validate(model, device, val_dataloader, loss_fn, epoch))
             after_share = True
-
             current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args)
 
-    
+
     val_acc, val_loss, val_loss_detail = validate(model, device, val_dataloader, loss_fn, epoch)
     if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
         print(val_acc, val_loss, val_loss_detail)
@@ -408,7 +428,30 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
         epochs = (1, epochs)
     after_share = not args.no_share_initial
 
+
+
     model.to(device)
+
+    current_qkv_ratio = args.qkv_ratio
+    current_fc1_ratio = args.fc1_ratio
+    current_fc2_ratio = args.fc2_ratio
+
+    step_num = len(train_dataloader) * (epochs[1] - epochs[0] + 1)
+    print("len(dataloader): ", len(train_dataloader))
+    print("Total step number: ", step_num)
+
+    ratio_change_time = args.max_ratio_epoch * (len(train_dataloader) // args.ratio_change_step)
+    print("Ratio change time: ", ratio_change_time)
+    print("Ratio change step: ", args.ratio_change_step)
+    
+    qkv_ratio_step = (args.max_qkv_ratio - args.qkv_ratio) / ratio_change_time
+    fc1_ratio_step = (args.max_fc1_ratio - args.fc1_ratio) / ratio_change_time
+    fc2_ratio_step = (args.max_fc2_ratio - args.fc2_ratio) / ratio_change_time
+
+    print("QKV ratio step: ", qkv_ratio_step)
+    print("FC1 ratio step: ", fc1_ratio_step)
+    print("FC2 ratio step: ", fc2_ratio_step)
+
 
     if current_best_acc < 0:
         current_best_acc, _, loss_detail = validate(model, device, val_dataloader, loss_fn, epochs[0]-1)
@@ -428,8 +471,13 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
     for epoch in range(epochs[0], epochs[1]+1):
         # Training
         begin_time = time.time()
-        train_acc, train_loss, train_loss_detail, best_shared_acc = train_one_epoch(model, device, train_dataloader, loss_fn, optimizer, epoch, teacher = teacher, 
-                                                                   after_share=after_share, val_dataloader=val_dataloader, checkpoint_dir=checkpoint_dir, scheduler=scheduler, best_shared_acc=best_shared_acc, start_share_epoch=args.start_share_epoch)
+        train_acc, train_loss, train_loss_detail, best_shared_acc, current_qkv_ratio, current_fc1_ratio, current_fc2_ratio= train_one_epoch(
+            model,device, train_dataloader, loss_fn, optimizer, epoch, teacher = teacher, 
+            after_share=after_share, val_dataloader=val_dataloader, checkpoint_dir=checkpoint_dir, scheduler=scheduler, best_shared_acc=best_shared_acc, start_share_epoch=args.start_share_epoch,
+            qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio, qkv_ratio_step=qkv_ratio_step, fc1_ratio_step=fc1_ratio_step, fc2_ratio_step=fc2_ratio_step, 
+            ratio_change_step = args.ratio_change_step, args=args)
+        
+        
         after_share = False
 
         info = []
@@ -493,13 +541,19 @@ def train_epochs(model, device, train_dataloader, val_dataloader, eval_dataloade
         if ((epoch-args.start_share_epoch) % args.share_every == 0) and (epoch >= args.start_share_epoch):
             weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
             print("start sharing")
-            weight_grad_share.weight_share_all(model=model, qkv_ratio=args.qkv_ratio, fc1_ratio=args.fc1_ratio, fc2_ratio=args.fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = False)
+            weight_grad_share.weight_share_all(model=model, qkv_ratio=current_qkv_ratio, fc1_ratio=current_fc1_ratio, fc2_ratio=current_fc2_ratio,macro_width=args.macro_width,args=args,distance_boundary=0.01, set_mask = True)
             weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
 
             print("Shared Checkpoint saved.")
             torch.save(model.state_dict(), checkpoint[:-3]+"_%i_shared.pt"%epoch)
             print(validate(model, device, val_dataloader, loss_fn, epoch))
             after_share = True
+
+
+        if args.ratio_change_epoch > 0:
+            if epoch % args.ratio_change_epoch == 0:
+                current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args, qkv_ratio_step, fc1_ratio_step, fc2_ratio_step)
+
 
     
     val_acc, val_loss, val_loss_detail = validate(model, device, val_dataloader, loss_fn, epoch)

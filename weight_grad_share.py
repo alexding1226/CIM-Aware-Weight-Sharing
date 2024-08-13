@@ -98,6 +98,7 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
     # head_weight_list[0].shape # [64, 768]
     # head_weight_list[0][:,0].shape # [64], a row vector of CIM
     num_sharing = 0
+    num_train = 0
 
     mask_allhead = []
     mask_allhead_old = []
@@ -132,28 +133,30 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
 
         no_share_row = 0
         i = 0
-        # while (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row) and i < share_height:
-        for i in range(share_height):
-            if not (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row):    break
+        while (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row):
             idx = sort_idx[i]
             macro_idx = idx // macro_height
 
             if sort_value[i] > distance_boundary: # if the distance is larger than the boundary, then it has to not share. but still have a chance to train
                 mask_share[idx] = False
+            
 
-            if (no_share_row_per_macro[macro_idx] < max_no_share_row_per_macro): # if the macro has not reached the maximum number of no sharing row, then it has to not share and not train
+            if (no_share_row_per_macro[macro_idx] < max_no_share_row_per_macro) and no_share_row < num_no_sharing_row : # if the macro has not reached the maximum number of no sharing row, then it has to not share and not train
 
                 mask_train[idx] = False
                 mask_share[idx] = False
                 no_share_row += 1
                 no_share_row_per_macro[macro_idx] += 1
-            # i += 1
+            i += 1
+            if i == share_height: 
+                break
 
         if not no_sharing:
             head_weight_list[upd_time+1][:,mask_share] = head_weight_list[upd_time][:,mask_share]
         
 
         num_sharing += sum(mask_share)
+        num_train += sum(mask_train)
 
         mask_allhead.append(mask_train.to(weight.device))
 
@@ -200,8 +203,11 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
     num_sharing = num_sharing / (upd_time_row*upd_time_col-1)
     num_sharing = num_sharing / share_height
 
+    num_train = num_train / (upd_time_row*upd_time_col-1)
+    num_train = num_train / share_height
+
     if return_shared_index:
-        return new_weight, num_sharing, mask_allhead, sum(mask_diff_list)/len(mask_diff_list)
+        return new_weight, num_sharing, mask_allhead, sum(mask_diff_list)/len(mask_diff_list), num_train
     else:
         return new_weight, num_sharing
     
@@ -244,6 +250,7 @@ def determin_boundary(weight, share_height = 768,macro_width = 64, flow = "row",
 def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro_width=64,args=None,distance_boundary = 100.0, set_mask = True):
     boundary_list = [distance_boundary]*12
     sharing_block_list = []
+    train_block_list = []
     # sharing_rate_list : [(qkv_ratio*block_ratio)*4, (qkv_ratio)*4, (qkv_ratio*(2-block_ratio))*4]
     sharing_rate_list = [qkv_ratio*args.block_ratio]*4 + [qkv_ratio]*4 + [qkv_ratio*(2-args.block_ratio)]*4
     
@@ -268,15 +275,15 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
             q_weight = weight[:dim,:]
             k_weight = weight[dim:dim*2,:]
             v_weight = weight[dim*2:,:]
-            q_weight_share, num_q_sharing, q_mask, mask_diff = row_sharing_r1(q_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
+            q_weight_share, num_q_sharing, q_mask, mask_diff, num_q_train = row_sharing_r1(q_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
                                                                      return_shared_index=True, macro_height=args.macro_height,flow=args.flow, no_sharing=no_sharing, 
                                                                      macro_width=args.macro_width,dist_type = args.dist_type, share_height = share_height, min_sharing_rate_per_macro = args.min_sharing_rate_per_macro)
             mask_diff_list.append(mask_diff)
-            k_weight_share, num_k_sharing, k_mask, mask_diff = row_sharing_r1(k_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
+            k_weight_share, num_k_sharing, k_mask, mask_diff, num_k_train = row_sharing_r1(k_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
                                                                      return_shared_index=True, macro_height=args.macro_height,flow=args.flow, no_sharing=no_sharing, 
                                                                      macro_width=args.macro_width,dist_type = args.dist_type, share_height = share_height, min_sharing_rate_per_macro = args.min_sharing_rate_per_macro)
             mask_diff_list.append(mask_diff)
-            v_weight_share, num_v_sharing, v_mask, mask_diff = row_sharing_r1(v_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
+            v_weight_share, num_v_sharing, v_mask, mask_diff, num_v_train = row_sharing_r1(v_weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
                                                                      return_shared_index=True, macro_height=args.macro_height,flow=args.flow, no_sharing=no_sharing, 
                                                                      macro_width=args.macro_width,dist_type = args.dist_type, share_height = share_height, min_sharing_rate_per_macro = args.min_sharing_rate_per_macro)
             mask_diff_list.append(mask_diff)
@@ -289,12 +296,14 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
 
             qkv_mask.append([q_mask, k_mask, v_mask])
             sharing_block_list.append([num_q_sharing, num_k_sharing, num_v_sharing])
+            train_block_list.append([num_q_train, num_k_train, num_v_train])
 
         # print("q_id_map:",q_idx_map)
         # print("k_id_map:",k_idx_map)
         # print("v_id_map:",v_idx_map)
         print("use time : ",time.time()-start_time)
         print(f"sharing_block_list : {sharing_block_list}")
+        print(f"train_block_list : {train_block_list}")
         print("mask diff average : ",sum(mask_diff_list)/len(mask_diff_list))
         # with open("qkv_mask.txt", "w") as f:
         #     for block_id in range(12):
@@ -312,6 +321,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
     boundary_list = [distance_boundary]*12
     sharing_rate_list = [fc1_ratio*args.block_ratio]*4 + [fc1_ratio]*4 + [fc1_ratio*(2-args.block_ratio)]*4
     sharing_block_list = []
+    train_block_list = []
     fc1_mask = None
 
     if args.share_height_type == "macro":
@@ -328,17 +338,19 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
         start_time = time.time()
         for i in range(12):
             weight = model.blocks[i].mlp.fc1.weight
-            weight, num_sharing, mask, mask_diff = row_sharing_r1(weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
+            weight, num_sharing, mask, mask_diff, num_train = row_sharing_r1(weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i], 
                                                                  return_shared_index=True, macro_height=args.macro_height,flow=args.flow, no_sharing=no_sharing,
                                                                  macro_width=args.macro_width,dist_type = args.dist_type, share_height = share_height, min_sharing_rate_per_macro = args.min_sharing_rate_per_macro)
             mask_diff_list.append(mask_diff)
             if not no_sharing:
                 model.blocks[i].mlp.fc1.weight.data = weight
             sharing_block_list.append(num_sharing)
+            train_block_list.append(num_train)
             fc1_mask.append(mask)
             #idx_mapping[i].append(fc1_idx)
         print("use time : ",time.time()-start_time)
-        print(sharing_block_list)
+        print(f"sharing_block_list : {sharing_block_list}")
+        print(f"train_block_list : {train_block_list}")
         print("mask diff average : ",sum(mask_diff_list)/len(mask_diff_list))
 
 
@@ -347,6 +359,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
     boundary_list = [distance_boundary]*12
     sharing_rate_list = [fc2_ratio*args.block_ratio]*4 + [fc2_ratio]*4 + [fc2_ratio*(2-args.block_ratio)]*4
     sharing_block_list = []
+    train_block_list = []
 
     if args.share_height_type == "macro":
         share_height = args.macro_height
@@ -363,7 +376,7 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
         start_time = time.time()
         for i in range(12):
             weight = model.blocks[i].mlp.fc2.weight
-            weight, num_sharing, mask, mask_diff = row_sharing_r1(weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i],
+            weight, num_sharing, mask, mask_diff, num_train = row_sharing_r1(weight, distance_boundary= boundary_list[i], max_sharing_rate=sharing_rate_list[i],
                                                                   return_shared_index=True, macro_height=args.macro_height,flow=args.flow, 
                                                                   no_sharing=no_sharing, macro_width=args.macro_width,dist_type = args.dist_type, share_height = share_height, min_sharing_rate_per_macro = args.min_sharing_rate_per_macro)
             if not no_sharing:
@@ -375,10 +388,12 @@ def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro
             sharing_block_list.append(num_sharing)
             fc2_mask.append(mask)
             mask_diff_list.append(mask_diff)
+            train_block_list.append(num_train)
 
             #idx_mapping[i].append(fc2_idx)
         print("use time : ",time.time()-start_time)
-        print(sharing_block_list)
+        print(f"sharing_block_list : {sharing_block_list}")
+        print(f"train_block_list : {train_block_list}")
         print("mask diff average : ",sum(mask_diff_list)/len(mask_diff_list))
 
 
