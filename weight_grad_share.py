@@ -130,7 +130,7 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
         sort_value, sort_idx = torch.sort(distances, descending=True)
 
         # Test Distances
-        print(sort_value[0], sort_value[len(sort_value)//2], sort_value[-1])
+        print(sort_value[0], sort_value[len(sort_value)//2], sort_value[-1], distance_boundary)
 
         # print("sort_value : ",sort_value)
         # print("sort_idx : ",sort_idx)
