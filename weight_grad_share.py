@@ -128,6 +128,15 @@ def row_sharing_r1(weight, distance_boundary, max_sharing_rate=0.5, return_share
         # print("distances : ",distances)
 
         sort_value, sort_idx = torch.sort(distances, descending=True)
+
+        # Test Distances
+        for s_i in range(len(sort_value)):
+            if (s_i == 0):
+                print(s_i, "\t", sort_value[s_i])
+            else:
+                print(s_i, "\t", sort_value[s_i], "\t", sort_value[s_i]-sort_value[s_i-1])
+
+
         # print("sort_value : ",sort_value)
         # print("sort_idx : ",sort_idx)
 
