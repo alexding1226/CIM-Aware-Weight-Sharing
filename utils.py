@@ -195,7 +195,7 @@ def train_one_epoch(model, device, dataloader, loss_fn, optimizer, epoch, teache
                     best_acc = val_acc
                     torch.save(model.state_dict(), checkpoint_dir + "/checkpoint_best.pt")
                 scheduler.step(val_acc)
-            if idx % ratio_change_step == 0 and idx > 0:
+            if idx % ratio_change_step == 0 and idx > 0 and epoch > start_share_epoch:
                 current_qkv_ratio, current_fc1_ratio, current_fc2_ratio = update_ratio(current_qkv_ratio, current_fc1_ratio, current_fc2_ratio, args, qkv_ratio_step, fc1_ratio_step, fc2_ratio_step)
                 print("Current (qkv, fc1, fc2) ratios: (%.3f, %.3f, %.3f)" % (current_qkv_ratio, current_fc1_ratio, current_fc2_ratio))
                 weight_grad_share.check_distance(model=model, macro_width=args.macro_width,args=args,distance_boundary=args.check_distance_value)
