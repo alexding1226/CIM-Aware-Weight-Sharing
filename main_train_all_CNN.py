@@ -131,37 +131,53 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
-def CNN():
-    return None
-
 def main():
+
     set_seed(2357)
     parser = get_parser()
     args = parser.parse_args()
     device = torch.device(args.device)
+
+
+    # File Path
+    val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
     PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16-397923af.pth' if args.model_type == 'VGG16' else None
     checkpoint = torch.load(PATH, weights_only=True)
 
     loss_fn = losses.CNNLoss(args.pred_weight, args.soft_weight, args.dist_weight, args.Ar)
     start_epoch = 0
 
-    model, teacher = vgg16(), vgg16_teacher()
-
-    model.to(device)
-    teacher.to(device)
-
-    model.eval()
-    teacher.eval()
-
-    model.load_state_dict(checkpoint)
-    teacher.load_state_dict(checkpoint)
+    model = vgg16()           ; model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+    teacher = vgg16_teacher() ; teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
     
-    # if args.val_before_share:
-    val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
-    val_dataloader = get_dataloader(val_catlog, batch_size=args.val_batch_size)
-    print(validate(model, device, val_dataloader, loss_fn, start_epoch))
-    # return
 
+    print("Conv2D:")
+    for layer in model.features:
+        if isinstance(layer, nn.Conv2d):
+            print("\t", layer.weight.shape)
+    print("Linear:")
+    for layer in model.classifier:
+        if isinstance(layer, nn.Linear):
+            print("\t", layer.weight.shape)
+
+    last_progress = torch.load('progress.pt') if args.resume else {}
+    start_epoch = last_progress['epoch'] if args.resume else args.start_epoch
+
+    if args.resume:
+        model.load_state_dict(last_progress['model'])
+        model.to(device)
+    elif args.load_checkpoint:
+        print("load checkpoint : ", args.load_checkpoint)
+        model.load_state_dict(torch.load(args.load_checkpoint))
+        model.to(device)
+    
+
+    if args.val_before_share:
+        val_dataloader = get_dataloader(val_catlog, batch_size=args.val_batch_size)
+        print(validate(model, device, val_dataloader, loss_fn, start_epoch))
+        return
+
+    print("start sharing")
     weight_share_vgg(
         model=model,
         conv_ratio=args.conv_ratio,
@@ -184,8 +200,10 @@ def main():
         eval_dataloader = get_dataloader(val_catlog, batch_size=args.val_batch_size)
 
         optimizer = AdamW(model.parameters(), lr=args.lr)
-
         scheduler = ReduceLROnPlateau(optimizer, min_lr=args.min_lr, factor=args.lr_factor, patience=args.lr_patience, mode='max')
+        if args.resume:
+            optimizer.load_state_dict(last_progress['optimizer'])
+            scheduler.load_state_dict(last_progress['scheduler'])
 
         for state in optimizer.state.values():
             for k, v in state.items():
@@ -193,7 +211,13 @@ def main():
                     state[k] = v.to(device)
 
         
-        best_acc = -1
+        if args.resume:
+            best_acc = last_progress['best_acc']
+        elif args.best_acc is not None:
+            best_acc = args.best_acc
+        else:
+            best_acc = -1
+
 
         train_epochs(
             model, 

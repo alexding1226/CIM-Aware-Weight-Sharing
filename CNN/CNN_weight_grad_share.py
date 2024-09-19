@@ -40,7 +40,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
     
     original_weight = weight.clone().detach()
 
-    print(f"row_sharing_vgg(share_height={share_height})")
+    # print(f"row_sharing_vgg(share_height={share_height})")
 
     """
     if is_conv:         # If it's a convolutional layer, reshape the weight from 4D to 2D
@@ -66,7 +66,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
     # mat_height: in_channels * k_h * k_w
     mat_width, mat_height = weight.shape 
 
-    print(f"mat_width : {mat_width}, mat_height : {mat_height}")
+    # print(f"mat_width : {mat_width}, mat_height : {mat_height}")
     
     upd_time_row = mat_width // macro_width
     upd_time_col = mat_height // share_height
@@ -77,7 +77,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
         return original_weight, 0, [], 0, mat_width*mat_height
     
 
-    print(f"upd_time_row : {upd_time_row}, upd_time_col : {upd_time_col}")
+    # print(f"upd_time_row : {upd_time_row}, upd_time_col : {upd_time_col}")
     
     # Ensure upd_time_row and upd_time_col are at least 1
     if upd_time_row == 0 or upd_time_col == 0:
@@ -94,7 +94,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
 
         assert upd_time_row > 0 and upd_time_col > 0, "Error: upd_time_row and upd_time_col must be at least 1 after padding"
 
-    print(f"padded upd_time_row : {upd_time_row}, upd_time_col : {upd_time_col}")    
+    # print(f"padded upd_time_row : {upd_time_row}, upd_time_col : {upd_time_col}")    
 
     weight = weight.clone().detach()
 
@@ -140,7 +140,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
             macro_idx = idx // macro_height
 
             if sort_value[i] > distance_boundary:
-                print(f"{sort_value[i]} > {distance_boundary}")
+                # print(f"{sort_value[i]} > {distance_boundary}")
                 mask_share[idx] = False
 
             if no_share_row_per_macro[macro_idx] < max_no_share_row_per_macro and no_share_row < num_no_sharing_row:
@@ -188,7 +188,6 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
 
     num_sharing = num_sharing / (upd_time_row * upd_time_col - 1)
     num_sharing = num_sharing / share_height
-    print(num_sharing)
     num_train = num_train / (upd_time_row * upd_time_col - 1)
     num_train = num_train / share_height
 
@@ -219,7 +218,6 @@ def weight_share_vgg(model, conv_ratio, fc_ratio, no_sharing=False, macro_width=
     conv_sharing_rate_list = [conv_ratio] * len(model.features)
     conv_mask = None
 
-    share_height = 64
     if args.share_height_type == "macro":
         share_height = args.macro_height
     
@@ -250,7 +248,7 @@ def weight_share_vgg(model, conv_ratio, fc_ratio, no_sharing=False, macro_width=
                     out_channels, in_channels, k_h, k_w = weight.shape  
                     share_height = in_channels*k_h*k_w
 
-                print("Current Conv2D shape: ", weight.shape)
+                # print("Current Conv2D shape: ", weight.shape)
 
                 new_weight, num_sharing, mask, mask_diff, num_train = row_sharing_vgg(
                     weight, distance_boundary=conv_boundary_list[i], max_sharing_rate=conv_sharing_rate_list[i], 
@@ -262,7 +260,7 @@ def weight_share_vgg(model, conv_ratio, fc_ratio, no_sharing=False, macro_width=
                 if not no_sharing:
                     assert model.features[i].weight.shape == new_weight.shape, f"Dimension mismatch: model weight shape {model.features[i].weight.shape} != new weight shape {weight.shape}"
                     model.features[i].weight = torch.nn.Parameter(new_weight)
-                    print("new_weight =", new_weight.shape)
+                    # print("new_weight =", new_weight.shape)
                     # model.update_weight("conv", i, torch.nn.Parameter(weight))
                 
                 conv_sharing_block_list.append(num_sharing)
@@ -285,6 +283,9 @@ def weight_share_vgg(model, conv_ratio, fc_ratio, no_sharing=False, macro_width=
             if isinstance(layer, nn.Linear):
                 weight = torch.nn.Parameter(layer.weight)
                 print("Current FC shape: ", weight.shape)
+
+                if args.share_height_type == "whole":
+                    share_height = weight.shape[1]
 
                 weight, num_sharing, mask, mask_diff, num_train = row_sharing_vgg(
                     weight, distance_boundary=fc_boundary_list[i], max_sharing_rate=fc_sharing_rate_list[i],

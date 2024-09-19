@@ -394,12 +394,11 @@ def train_epochs(
     print("Conv2D ratio step: ", conv_ratio_step)
     print("FC ratio step: ", fc_ratio_step)
 
-    """ skip first for test
     if current_best_acc < 0:
         current_best_acc, _, loss_detail = validate(model, device, val_dataloader, loss_fn, epochs[0]-1)
         if "dist_loss" in loss_detail:
             print("Current distance loss: %6.3f" % (loss_detail["dist_loss"]))
-    """
+    
 
     print("Current best acc: %6.3f" % current_best_acc)
     best_shared_acc = -1

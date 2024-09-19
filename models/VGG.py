@@ -121,7 +121,6 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
                 # print(tmp2.shape)
                 # print(mask[upd].shape)
                 tmp = compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type) # * mask[upd]
-                print(tmp.shape)
                 dist = torch.mean(compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type) * mask[upd])
             dist_list.append(dist)
     elif flow == "column":
@@ -194,11 +193,12 @@ class VGG(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self._forward_impl(x)
-        # dist_conv = self.compute_dist_conv(self.conv_mask) if self.conv_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
-        # dist_fc = self.compute_dist_fc(self.fc_mask) if self.fc_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
-        # dist = dist_conv + dist_fc
+        dist_conv = self.compute_dist_conv(self.conv_mask) if self.conv_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
+        dist_fc = self.compute_dist_fc(self.fc_mask) if self.fc_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
+        dist = dist_conv + dist_fc
+        # print(dist_conv, dist_fc, dist)
         # dist = dist_conv
-        dist = torch.zeros(1,dtype=torch.float32,device=x.device)
+        # dist = torch.zeros(1,dtype=torch.float32,device=x.device)
         return x, dist
     
     # Support torch.script function
@@ -240,13 +240,10 @@ class VGG(nn.Module):
             if isinstance(conv_layer, nn.Conv2d):
                 weight = conv_layer.weight
                 out_channels, in_channels, k_h, k_w = weight.shape
-                # Pony thinks this is bug
+
                 share_height = in_channels*k_w*k_h
-                print("Layer shape =", weight.shape)
-                print("Share_height =", share_height)
                 layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, share_height, self.flow, self.dist_type)
-                # layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, self.macro_height, self.flow, self.dist_type)
-                # End bug
+                
                 dist_list.append(layer_dist)
                 idx += 1
         """
@@ -261,13 +258,16 @@ class VGG(nn.Module):
         return sum(dist_list)
 
     def compute_dist_fc(self, fc_mask):
-        dist_list = []
+        dist_list = [] 
+
 
         idx = 0
         for linear_layer in self.classifier:
             if isinstance(linear_layer, nn.Linear):
                 weight = linear_layer.weight
-                layer_dist = compute_distances_inside_matrix(weight, fc_mask[idx], self.macro_width, self.macro_height, self.flow, self.dist_type, False)
+                w, h = weight.shape
+                share_height = h
+                layer_dist = compute_distances_inside_matrix(weight, fc_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, False)
                 dist_list.append(layer_dist)
                 idx += 1
         """
