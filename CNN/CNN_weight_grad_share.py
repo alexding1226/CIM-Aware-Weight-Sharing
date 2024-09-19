@@ -294,7 +294,8 @@ def weight_share_vgg(model, conv_ratio, fc_ratio, no_sharing=False, macro_width=
                     share_height=share_height, min_sharing_rate_per_macro=args.min_sharing_rate_per_macro, is_conv=False
                 )
                 if not no_sharing:
-                    model.classifier[i].weight = torch.nn.Parameter(weight)
+                    # model.classifier[i].weight = torch.nn.Parameter(weight)
+                    model.update_weight("fc", i, torch.nn.Parameter(weight))
                 fc_sharing_block_list.append(num_sharing)
                 fc_train_block_list.append(num_train)
                 fc_mask.append(mask)

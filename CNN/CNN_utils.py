@@ -139,7 +139,6 @@ def train_one_epoch(
     ratio_change_step=4000,
     args=None,
 ):
-    print("Start Train one epoch")
     model.to(device)
     model.train()
     loss_fn.train()

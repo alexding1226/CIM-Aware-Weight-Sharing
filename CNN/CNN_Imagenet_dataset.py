@@ -9,19 +9,30 @@ class CNN_ImagenetDataset(Dataset):
         self.label_list = []
         self.image_size = image_size
         self.root_path = root_path
+        
         self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.RandomHorizontalFlip(),
+            transforms.Resize(256),              # Resize the image to 256x256
+            transforms.RandomCrop(224),          # Random crop to 224x224
+            transforms.RandomHorizontalFlip(),   # Randomly flip the image horizontally
+            
             transforms.RandomAffine(30, translate=(0.3, 0.3), scale=(1.0, 1.5)),
             transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
             transforms.Resize(self.image_size),
-            transforms.Normalize(0.5, 0.5),
+
+            transforms.ToTensor(),               # Convert image to PyTorch tensor
+            transforms.Normalize(                # Normalize using ImageNet mean and std
+                mean=[0.485, 0.456, 0.406], 
+                std=[0.229, 0.224, 0.225]
+            ),
         ]) if augamentation else transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            #transforms.Resize(self.image_size),
-            transforms.Normalize(0.5, 0.5),
+            transforms.Resize(256),              # Resize the image to 256x256
+            transforms.RandomCrop(224),          # Random crop to 224x224
+            transforms.RandomHorizontalFlip(),   # Randomly flip the image horizontally
+            transforms.ToTensor(),               # Convert image to PyTorch tensor
+            transforms.Normalize(                # Normalize using ImageNet mean and std
+                mean=[0.485, 0.456, 0.406], 
+                std=[0.229, 0.224, 0.225]
+            ),
         ])
 
 

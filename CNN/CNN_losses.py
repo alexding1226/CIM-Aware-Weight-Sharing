@@ -65,7 +65,7 @@ class CNNLoss(nn.Module):
         with torch.no_grad():
             if (self.soft_weight > 0 and self.teacher is not None):
                 self.teacher.eval()
-                teacher_output,teacher_attn_tuple,teacher_hid_tuple = self.teacher(input)
+                teacher_output, _ = self.teacher(input)
                 soft_loss = self.criterion_soft(pred_y, teacher_output)
         pred_loss = nn.CrossEntropyLoss(reduction='sum')(pred_y, label)
         if dist == 0 or not add_dist:

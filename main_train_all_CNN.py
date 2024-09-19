@@ -4,7 +4,7 @@ import CNN.CNN_losses as losses
 from CNN.CNN_weight_grad_share import *
 
 import torch
-from Imagenet_dataset import ImagenetDataset
+from CNN.CNN_Imagenet_dataset import CNN_ImagenetDataset
 
 from models.VGG import vgg16
 from models.VGG_teacher import vgg16_teacher
@@ -108,7 +108,7 @@ def get_parser():
 def get_dataloader(catlog_path, subset_size=None, batch_size=16, augamentation=False):
     root_path = '/home/common/SharedDataset/ImageNet'
     num_workers = min(32, batch_size)
-    dataset = ImagenetDataset(root_path, catlog_path, augamentation=augamentation)
+    dataset = CNN_ImagenetDataset(root_path, catlog_path, augamentation=augamentation)
     print("dataset length:",len(dataset))
     if subset_size is None:
         dataloader = DataLoader(
@@ -142,7 +142,8 @@ def main():
     # File Path
     val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
     PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16-397923af.pth' if args.model_type == 'VGG16' else None
-    checkpoint = torch.load(PATH, weights_only=True)
+    # PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16_features-amdegroot-88682ab5.pth' if args.model_type == 'VGG16' else None
+    checkpoint = torch.load(PATH)#, weights_only=True)
 
     loss_fn = losses.CNNLoss(args.pred_weight, args.soft_weight, args.dist_weight, args.Ar)
     start_epoch = 0
