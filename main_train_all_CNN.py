@@ -156,7 +156,7 @@ def main():
     val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
     PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16-397923af.pth' if args.model_type == 'VGG16' else None
     # PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16_features-amdegroot-88682ab5.pth' if args.model_type == 'VGG16' else None
-    checkpoint = torch.load(PATH)#, weights_only=True)    
+    checkpoint = torch.load(PATH, weights_only=True)    
 
     model = vgg16()           ; model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
     teacher = vgg16_teacher() ; teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)

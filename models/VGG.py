@@ -326,6 +326,18 @@ class VGG(nn.Module):
         elif layer_type == "fc":
             self.classifier[layer_index].weight = new_weight
 
+    def unfreeze(self):
+        for idx, layer in enumerate(self.features):
+            if isinstance(layer, nn.Conv2d):
+                layer.weight.requires_grad = True
+        for idx, layer in enumerate(self.classifier):
+            if isinstance(layer, nn.Linear):
+                layer.weight.requires_grad = True
+
+    def freeze_parameters(self):
+        for params in self.parameters():
+            params.requires_grad = False
+
 
 def vgg11(**kwargs) -> VGG:
     model = VGG(vgg_cfgs["vgg11"], False, **kwargs)
