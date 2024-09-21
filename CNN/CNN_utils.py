@@ -566,7 +566,7 @@ def train_epochs(
                 fc_ratio_list=current_fc_ratio_list,
                 macro_width=args.macro_width,
                 args=args,
-                distance_boundary=args.boundary,
+                distance_boundary=0.01,
                 set_mask=True,
             )
             # weight_grad_share.check_distance(
@@ -599,14 +599,3 @@ def train_epochs(
         f.write(str(val_acc))
         f.close()
 
-
-if __name__ == "__main__":
-    x = torch.tensor([[1, 1, 1], [1, 1, 1]], dtype=torch.float32)
-    y = torch.tensor([[2, 1, 4], [3, 4, 1]], dtype=torch.float32)
-    max_value, max_idx = y.max(dim=0)
-    print(torch.sort(y, dim=1))
-    sorted_value, sorted_idx = torch.sort(y, dim=0)
-
-    x = torch.randn(3, 3)
-    y = torch.randn(3, 3)
-    print(torch.cat([x, y], dim=0).shape)
