@@ -171,7 +171,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
                 break
 
         if not no_sharing:
-            head_weight_list[upd_time + 1][:, mask_share] = head_weight_list[upd_time][:, mask_share]
+            head_weight_list[upd_time + 1][:, mask_share] = head_weight_list[upd_time][:, mask_share].clone()
 
 
         num_sharing += sum(mask_share)
@@ -180,8 +180,8 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
         mask_allhead.append(mask_train.to(weight.device))
     
         # debug
-        first_head_weight = head_weight_list[upd_time]
-        second_head_weight = head_weight_list[upd_time+1]
+        first_head_weight = head_weight_list[upd_time].clone()
+        second_head_weight = head_weight_list[upd_time+1].clone()
         distances = compute_column_distances_r1(second_head_weight, first_head_weight, dist_type=dist_type)
         distances = distances.detach().to(torch.device("cpu"))
         mask_old = torch.zeros(share_height, dtype=torch.bool, device=distances.device)
@@ -267,7 +267,7 @@ def weight_share_vgg(model, conv_ratio_list, fc_ratio_list, no_sharing=False, ma
                 torch.Size([512, 512, 3, 3])
                 torch.Size([512, 512, 3, 3])
                 """
-                weight = layer.weight
+                weight = layer.weight.data
 
                 if args.share_height_type == "whole":
                     out_channels, in_channels, k_h, k_w = weight.shape  
@@ -294,9 +294,9 @@ def weight_share_vgg(model, conv_ratio_list, fc_ratio_list, no_sharing=False, ma
                             print(test_num)
                     """
 
-                    model.features[i].weight = torch.nn.Parameter(new_weight)
+                    model.features[i].weight.data = new_weight.clone()
                     # print("new_weight =", new_weight.shape)
-                    # model.update_weight("conv", i, torch.nn.Parameter(weight))
+                    
                 
                 conv_sharing_block_list.append(num_sharing)
                 conv_train_block_list.append(num_train)
@@ -324,7 +324,7 @@ def weight_share_vgg(model, conv_ratio_list, fc_ratio_list, no_sharing=False, ma
         fc_idx = 0
         for i, layer in enumerate(model.classifier):
             if isinstance(layer, nn.Linear):
-                weight = torch.nn.Parameter(layer.weight)
+                weight = layer.weight.data
                 print("Current FC shape: ", weight.shape)
 
                 if args.share_height_type == "whole":
@@ -337,8 +337,8 @@ def weight_share_vgg(model, conv_ratio_list, fc_ratio_list, no_sharing=False, ma
                     share_height=share_height, min_sharing_rate_per_macro=args.min_sharing_rate_per_macro, is_conv=False
                 )
                 if not no_sharing:
-                    model.classifier[i].weight = torch.nn.Parameter(weight)
-                    # model.update_weight("fc", i, torch.nn.Parameter(weight))
+                    model.classifier[i].weight.data = weight.clone()
+                    
                 fc_sharing_block_list.append(num_sharing)
                 fc_train_block_list.append(num_train)
                 fc_mask.append(mask)
