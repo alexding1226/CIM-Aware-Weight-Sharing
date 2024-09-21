@@ -59,24 +59,27 @@ class CNNLoss(nn.Module):
         self.Ar = Ar
         self.criterion_soft = soft_cross_entropy
     def loss_terms(self):
-        return ['pred_loss', 'dist_loss', 'total_loss']
+        return ['pred_loss', 'dist_loss', 'soft_loss', 'total_loss']
     def forward(self, input, output, label, add_dist=True):
         pred_y, dist = output
         with torch.no_grad():
             if (self.soft_weight > 0 and self.teacher is not None):
                 self.teacher.eval()
-                teacher_output, _ = self.teacher(input)
+                teacher_output = self.teacher(input)
                 soft_loss = self.criterion_soft(pred_y, teacher_output)
+            else:
+                soft_loss = 0
         pred_loss = nn.CrossEntropyLoss(reduction='sum')(pred_y, label)
-        if dist == 0 or not add_dist:
-            total_loss = pred_loss * self.pred_weight
+        if not add_dist:
+            total_loss = pred_loss * self.pred_weight + soft_loss * self.soft_weight
         else:
-            total_loss = pred_loss * self.pred_weight + dist * self.dist_weight 
+            total_loss = pred_loss * self.pred_weight + dist * self.dist_weight + soft_loss * self.soft_weight
 
         return total_loss, {
-            'pred_loss': pred_loss.detach().item(),
-            "dist_loss": dist.detach().item(),
-            "total_loss": total_loss.detach().item()
+            'pred_loss':  pred_loss.detach().item(),
+            'dist_loss':  dist.detach().item(),
+            "soft_loss":  soft_loss.detach().item(),
+            'total_loss': total_loss.detach().item()
         }
 
 

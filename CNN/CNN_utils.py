@@ -25,9 +25,9 @@ def ratio_scheduler(initial_ratio, end_ratio, total_steps, end_step):
     return scheduler_list
 
 
-def update_ratio(
-    current_conv_ratio,
-    current_fc_ratio,
+def update_ratio_list(
+    current_conv_ratio_list,
+    current_fc_ratio_list,
     args,
     conv_ratio_step,
     fc_ratio_step,
@@ -38,10 +38,12 @@ def update_ratio(
             if current_ratio + ratio_step < max_ratio
             else max_ratio
         )
+    def get_new_ratio_list(current_ratio_list, max_ratio, ratio_step):
+        return [get_new_ratio(current_ratio, max_ratio, ratio_step) for current_ratio in current_ratio_list]
 
-    new_conv_ratio = get_new_ratio(current_conv_ratio, args.max_conv_ratio, conv_ratio_step)
-    new_fc_ratio = get_new_ratio(current_fc_ratio, args.max_fc_ratio, fc_ratio_step)
-    return new_conv_ratio, new_fc_ratio
+    new_conv_ratio_list = get_new_ratio_list(current_conv_ratio_list, args.max_conv_ratio, conv_ratio_step)
+    new_fc_ratio_list = get_new_ratio_list(current_fc_ratio_list, args.max_fc_ratio, fc_ratio_step)
+    return new_conv_ratio_list, new_fc_ratio_list
 
 
 def validate(model, device, dataloader, loss_fn, epoch):
@@ -132,8 +134,8 @@ def train_one_epoch(
     scheduler=None,
     best_shared_acc=0,
     start_share_epoch=0,
-    conv_ratio=0,
-    fc_ratio=0,
+    conv_ratio_list=[],
+    fc_ratio_list=[],
     conv_ratio_step=0,
     fc_ratio_step=0,
     ratio_change_step=4000,
@@ -156,8 +158,8 @@ def train_one_epoch(
     moving_dist = [0]
     add_dist = not after_share
 
-    current_conv_ratio = conv_ratio
-    current_fc_ratio = fc_ratio
+    current_conv_ratio_list = conv_ratio_list
+    current_fc_ratio_list = fc_ratio_list
 
     # print("len(dataloader): ", len(dataloader))
 
@@ -239,25 +241,24 @@ def train_one_epoch(
                     )
                 scheduler.step(val_acc)
             if idx % ratio_change_step == 0 and idx > 0 and epoch > start_share_epoch:
-                current_conv_ratio, current_fc_ratio = update_ratio(
-                    current_conv_ratio,
-                    current_fc_ratio,
+                current_conv_ratio_list, current_fc_ratio_list = update_ratio_list(
+                    current_conv_ratio_list,
+                    current_fc_ratio_list,
                     args,
                     conv_ratio_step,
                     fc_ratio_step
                 )
-                print(
-                    "Current (conv, fc) ratios: (%.3f, %.3f)"
-                    % (current_conv_ratio, current_fc_ratio)
-                )
+                print("Current conv ratio list: ", current_conv_ratio_list)
+                print("Current fc ratio list: ", current_fc_ratio_list)
+
                 print("start sharing")
                 weight_share_vgg(
                     model=model,
-                    conv_ratio=current_conv_ratio,
-                    fc_ratio=current_fc_ratio,
+                    conv_ratio_list=current_conv_ratio_list,
+                    fc_ratio_list=current_fc_ratio_list,
                     macro_width=args.macro_width,
                     args=args,
-                    distance_boundary=args.boundary,
+                    distance_boundary=0.01,
                     set_mask=True,
                 )
                 add_dist = False
@@ -273,8 +274,8 @@ def train_one_epoch(
         agg_loss,
         agg_loss_detail,
         best_acc,
-        current_conv_ratio,
-        current_fc_ratio
+        current_conv_ratio_list,
+        current_fc_ratio_list
     )
 
 
@@ -370,8 +371,13 @@ def train_epochs(
 
     model.to(device)
 
-    current_conv_ratio = args.conv_ratio
-    current_fc_ratio = args.fc_ratio
+    current_conv_ratio_list = args.conv_ratio_list
+    current_fc_ratio_list = args.fc_ratio_list
+
+    print("Start train with:")
+    print("Current conv ratio list: ", current_conv_ratio_list)
+    print("Current fc ratio list: ", current_fc_ratio_list)
+
 
     step_num = len(train_dataloader) * (epochs[1] - epochs[0] + 1)
     print("len(dataloader): ", len(train_dataloader))
@@ -424,8 +430,8 @@ def train_epochs(
             train_loss,
             train_loss_detail,
             best_shared_acc,
-            current_conv_ratio,
-            current_fc_ratio,
+            current_conv_ratio_list,
+            current_fc_ratio_list,
         ) = train_one_epoch(
             model,
             device,
@@ -440,8 +446,8 @@ def train_epochs(
             scheduler=scheduler,
             best_shared_acc=best_shared_acc,
             start_share_epoch=args.start_share_epoch,
-            conv_ratio=current_conv_ratio,
-            fc_ratio=current_fc_ratio,
+            conv_ratio_list=current_conv_ratio_list,
+            fc_ratio_list=current_fc_ratio_list,
             conv_ratio_step=conv_ratio_step,
             fc_ratio_step=fc_ratio_step,
             ratio_change_step=args.ratio_change_step,
@@ -556,8 +562,8 @@ def train_epochs(
             print("start sharing")
             weight_share_vgg(
                 model=model,
-                conv_ratio=current_conv_ratio,
-                fc_ratio=current_fc_ratio,
+                conv_ratio_list=current_conv_ratio_list,
+                fc_ratio_list=current_fc_ratio_list,
                 macro_width=args.macro_width,
                 args=args,
                 distance_boundary=args.boundary,
@@ -577,9 +583,9 @@ def train_epochs(
 
         if args.ratio_change_epoch > 0:
             if epoch % args.ratio_change_epoch == 0:
-                current_conv_ratio, current_fc_ratio = update_ratio(
-                    current_conv_ratio,
-                    current_fc_ratio,
+                current_conv_ratio_list, current_fc_ratio_list = update_ratio_list(
+                    current_conv_ratio_list,
+                    current_fc_ratio_list,
                     args,
                     conv_ratio_step,
                     fc_ratio_step,

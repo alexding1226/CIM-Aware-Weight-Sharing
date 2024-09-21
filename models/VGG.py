@@ -51,41 +51,38 @@ def compute_column_distances_r1(A, B, dist_type="euclidean"):
     elif dist_type == "linf":
         distances = torch.max(torch.abs(A - B), axis=0).values
 
+
     return distances
 
-
-def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_height=64, flow = "row", dist_type="euclidean", is_conv=True):
-    # Ensure matrix is a 2D tensor of shape (N, D)
-
-    out_channels, in_channels, k_h, k_w = 0, 0, 0, 0
-    if is_conv:  # If it's a convolutional layer, reshape the weight from 4D to 2D
-        """
-        # Get the dimensions of the weight tensor
-        out_channels, in_channels, k_h, k_w = matrix.shape
-        # New shape: (in_channels, out_channels * k_h * k_w)
-        matrix = matrix.permute(1, 0, 2, 3).contiguous()  # Change to (in_channels, out_channels, k_h, k_w)
-        matrix = matrix.view(in_channels, out_channels * k_h * k_w)  # Reshape to (in_channels, out_channels * k_h * k_w)
-        """
-        out_channels, in_channels, k_h, k_w = matrix.shape
-        matrix = matrix.view(out_channels, in_channels * k_h * k_w)
-
-        if (out_channels < macro_height) or (in_channels*k_h*k_w < macro_width):
-            pad_width = (0, max(0, macro_height - out_channels))  # Padding for width (height dimension in 2D)
-            pad_height = (0, max(0, macro_width - in_channels*k_h*k_w))  # Padding for height (width dimension in 2D)
-
-            # Pad the weight matrix using torch.nn.functional.pad
-            matrix = nn.functional.pad(matrix, pad=pad_width + pad_height, mode='constant', value=0)
-
-
-    assert matrix.ndim == 2
-
-    width, height = matrix.shape
+def _4D_to_2D(Conv2D_weight):
+    original_weight = Conv2D_weight.clone().detach()
+    out_channels, in_channels, k_h, k_w = Conv2D_weight.shape
+    share_height = in_channels * k_h * k_w
     
-    upd_time_col = height // macro_height
-    upd_time_row = width // macro_width
+    weight = original_weight.view(out_channels, share_height)
+    assert weight.ndim == 2
+    return weight.clone().detach()
 
+def _2D_to_4D(Conv2D_new_weight, out_channels, in_channels, k_h, k_w):
+    new_weight = Conv2D_new_weight.clone().detach()
+    share_height = in_channels * k_h * k_w
 
-    # Ensure upd_time_row and upd_time_col are at least 1
+    weight = new_weight.view(out_channels, in_channels, k_h, k_w)
+    assert weight.ndim == 4
+    return weight.clone().detach()
+
+def pad_logic():
+    return """
+    if (out_channels < macro_height) or (in_channels*k_h*k_w < macro_width):
+        pad_width = (0, max(0, macro_height - out_channels))  # Padding for width (height dimension in 2D)
+        pad_height = (0, max(0, macro_width - in_channels*k_h*k_w))  # Padding for height (width dimension in 2D)
+
+        # Pad the weight matrix using torch.nn.functional.pad
+        matrix = nn.functional.pad(matrix, pad=pad_width + pad_height, mode='constant', value=0)
+    """
+
+"""
+# Ensure upd_time_row and upd_time_col are at least 1
     if upd_time_row == 0 or upd_time_col == 0:
         pad_width = (0, max(0, macro_height - height))  # Padding for width (height dimension in 2D)
         pad_height = (0, max(0, macro_width - width))  # Padding for height (width dimension in 2D)
@@ -97,15 +94,27 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
         mat_width, mat_height = matrix.shape
         upd_time_row = max(1, mat_width // macro_width)  # Ensure at least 1
         upd_time_col = max(1, mat_height // macro_height)  # Ensure at least 1
+"""
 
-    if upd_time_row*upd_time_col-1 == 0:
-        return 0
+def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_height: int = 64, flow: str = "row", dist_type: str ="euclidean", is_conv: bool = True, accumulate_dist_method: str = "mean", test_mode: bool = False):
 
-    # for _ in range(100):
-    #     print(matrix.shape)
+    if is_conv: matrix = _4D_to_2D(matrix)
+    
+    width, height = matrix.shape
+    
+    upd_time_col = height // macro_height
+    upd_time_row = width // macro_width
+
+
+    if upd_time_row*upd_time_col-1 <= 0:    return 0
+
+    def accumulate_dist_function(dist_list, accumulate_dist_method):
+        if accumulate_dist_method == "mean":    return torch.mean(dist_list)
+        elif accumulate_dist_method == "sum":   return torch.sum(dist_list)
+        else:                                   raise NotImplementedError
+
 
     dist_list = []
-
     if flow == "row":
         for upd in range(upd_time_row*upd_time_col-1):
             upd_col = upd // upd_time_row
@@ -113,15 +122,44 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
             if upd_row == upd_time_row-1:
                 if len(mask) == 0:
                     return torch.zeros(1)
-                dist = torch.mean(compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[0:macro_width,(upd_col+1)*macro_height:(upd_col+2)*macro_height], dist_type=dist_type) * mask[upd])
+                # dist = torch.mean(compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[0:macro_width,(upd_col+1)*macro_height:(upd_col+2)*macro_height], dist_type=dist_type) * mask[upd])
+                dist = accumulate_dist_function(
+                    compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[0:macro_width,(upd_col+1)*macro_height:(upd_col+2)*macro_height], dist_type=dist_type) * mask[upd],
+                    accumulate_dist_method
+                )
             else:
-                tmp1 = matrix[ upd_row   *macro_width:(upd_row+1)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height]
-                tmp2 = matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height]
-                # print(tmp1.shape)
-                # print(tmp2.shape)
-                # print(mask[upd].shape)
-                tmp = compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type) # * mask[upd]
-                dist = torch.mean(compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type) * mask[upd])
+                tmp1 = matrix[ upd_row   *macro_width:(upd_row+1)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height].clone().detach()
+                tmp2 = matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height].clone().detach()
+                tmp = compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type)
+                
+                
+
+                if test_mode:
+                    print(len(mask[upd]))
+                    for tmp_idx, m in enumerate(mask[upd]):
+                        if m:
+                            print(tmp1[:, tmp_idx])
+                            print(tmp2[:, tmp_idx])
+                            print(tmp[tmp_idx])
+                        else:
+                            print("\t", tmp1[:, tmp_idx])
+                            print("\t", tmp2[:, tmp_idx])
+                            print("\t", tmp[tmp_idx])
+                    print("="*20)
+
+
+                masked_dist = tmp * mask[upd]
+                dist = accumulate_dist_function(
+                    masked_dist, 
+                    accumulate_dist_method
+                )
+                if test_mode:
+                    if not all(y==0 for y in mask[upd]):
+                        for mxi, mx in enumerate(mask[upd]):
+                            if not mx:
+                                print(mx, tmp[mxi])
+
+            
             dist_list.append(dist)
     elif flow == "column":
         for upd in range(upd_time_row*upd_time_col-1):
@@ -135,6 +173,10 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
     else:
         raise ValueError("The flow must be either row or column")
 
+    if accumulate_dist_method == "sum":
+        return sum(dist_list)
+
+  
 
     return sum(dist_list)/len(dist_list)
 
@@ -196,7 +238,23 @@ class VGG(nn.Module):
         dist_conv = self.compute_dist_conv(self.conv_mask) if self.conv_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
         dist_fc = self.compute_dist_fc(self.fc_mask) if self.fc_mask is not None else torch.zeros(1,dtype=torch.float32,device=x.device)
         dist = dist_conv + dist_fc
-        # print(dist_conv, dist_fc, dist)
+        
+        """ # Pony's test
+        print_dist_conv, print_dist_fc, print_dist = dist_conv, dist_fc, dist
+        if self.conv_mask is None:
+            print_dist_conv = None
+        else:
+            if len(self.conv_mask) == 0:
+                print("Empty conv mask")
+
+        if self.fc_mask is None:
+            print_dist_fc = None        
+        else:
+            if len(self.fc_mask) == 0:
+                print("Empty fc mask")    
+        print(f"dist_conv: {print_dist_conv}, dist_fc: {print_dist_fc}, dist: {print_dist}")
+        """
+
         # dist = dist_conv
         # dist = torch.zeros(1,dtype=torch.float32,device=x.device)
         return x, dist
@@ -234,33 +292,22 @@ class VGG(nn.Module):
 
     def compute_dist_conv(self, conv_mask):
         dist_list = []
-
         idx = 0
-        for conv_layer in self.features:
+        for i, conv_layer in enumerate(self.features):
             if isinstance(conv_layer, nn.Conv2d):
                 weight = conv_layer.weight
                 out_channels, in_channels, k_h, k_w = weight.shape
 
                 share_height = in_channels*k_w*k_h
-                layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, share_height, self.flow, self.dist_type)
+                layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, True)
                 
                 dist_list.append(layer_dist)
                 idx += 1
-        """
-        for idx, block in enumerate(self.blocks):
-            block_dist = block.compute_dist_qkv(qkv_mask[idx],self.macro_width,share_height,self.flow,self.dist_type)
-            dist_list.append(block_dist)
-        """
-        # block_dist = self.blocks[0].compute_dist_qkv(qkv_mask[0])
-        # dist_list.append(block_dist)
-        # block_dist = self.blocks[1].compute_dist_qkv(qkv_mask[1])
-        # dist_list.append(block_dist)
+        
         return sum(dist_list)
 
     def compute_dist_fc(self, fc_mask):
         dist_list = [] 
-
-
         idx = 0
         for linear_layer in self.classifier:
             if isinstance(linear_layer, nn.Linear):
@@ -270,15 +317,7 @@ class VGG(nn.Module):
                 layer_dist = compute_distances_inside_matrix(weight, fc_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, False)
                 dist_list.append(layer_dist)
                 idx += 1
-        """
-        for idx, block in enumerate(self.blocks):
-            block_dist = block.compute_dist_qkv(qkv_mask[idx],self.macro_width,share_height,self.flow,self.dist_type)
-            dist_list.append(block_dist)
-        """
-        # block_dist = self.blocks[0].compute_dist_qkv(qkv_mask[0])
-        # dist_list.append(block_dist)
-        # block_dist = self.blocks[1].compute_dist_qkv(qkv_mask[1])
-        # dist_list.append(block_dist)
+
         return sum(dist_list)
 
     def update_weight(self, layer_type, layer_index, new_weight):

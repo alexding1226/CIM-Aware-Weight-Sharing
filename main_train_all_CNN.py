@@ -94,6 +94,9 @@ def get_parser():
     parser.add_argument("--conv_ratio", type=float, default=0.05)
     parser.add_argument("--fc_ratio", type=float, default=0.05)
 
+    parser.add_argument("--conv_ratio_list", type=float, nargs='+', default=[])
+    parser.add_argument("--fc_ratio_list", type=float, nargs='+', default=[])
+
 
     # # add ratio scheduler
     parser.add_argument("--max_conv_ratio", type=float, default=0.5)
@@ -131,6 +134,16 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
+def get_ratio_list(args_ratio_list = [], desired_length = 0, to_pad = 0):
+    if len(args_ratio_list) == 0:
+        return [to_pad] * desired_length
+    else:
+        if len(args_ratio_list) < desired_length:
+            return args_ratio_list + [to_pad] * (desired_length - len(args_ratio_list))
+        else:
+            return args_ratio_list[:desired_length]
+
+
 def main():
 
     set_seed(2357)
@@ -143,23 +156,41 @@ def main():
     val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
     PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16-397923af.pth' if args.model_type == 'VGG16' else None
     # PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16_features-amdegroot-88682ab5.pth' if args.model_type == 'VGG16' else None
-    checkpoint = torch.load(PATH)#, weights_only=True)
-
-    loss_fn = losses.CNNLoss(args.pred_weight, args.soft_weight, args.dist_weight, args.Ar)
-    start_epoch = 0
+    checkpoint = torch.load(PATH)#, weights_only=True)    
 
     model = vgg16()           ; model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
     teacher = vgg16_teacher() ; teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
     
+    loss_fn = losses.CNNLoss(
+        pred_weight=args.pred_weight, 
+        soft_weight=args.soft_weight, 
+        dist_weight=args.dist_weight, 
+        Ar=args.Ar,
+        teacher=teacher
+    )
 
     print("Conv2D:")
+    total_conv_layers = 0
+    total_fc_layers = 0
     for layer in model.features:
         if isinstance(layer, nn.Conv2d):
+            total_conv_layers += 1
             print("\t", layer.weight.shape)
     print("Linear:")
     for layer in model.classifier:
         if isinstance(layer, nn.Linear):
+            total_fc_layers += 1
             print("\t", layer.weight.shape)
+
+    conv_ratio_list = get_ratio_list(args.conv_ratio_list, total_conv_layers, args.conv_ratio)
+    fc_ratio_list = get_ratio_list(args.fc_ratio_list, total_fc_layers, args.fc_ratio)
+
+    args.conv_ratio_list = conv_ratio_list
+    args.fc_ratio_list = fc_ratio_list
+
+    print(f"Conv ratio list: {args.conv_ratio_list}")
+    print(f"FC ratio list: {args.fc_ratio_list}")
+
 
     last_progress = torch.load('progress.pt') if args.resume else {}
     start_epoch = last_progress['epoch'] if args.resume else args.start_epoch
@@ -181,11 +212,12 @@ def main():
     print("start sharing")
     weight_share_vgg(
         model=model,
-        conv_ratio=args.conv_ratio,
-        fc_ratio=args.fc_ratio,
+        conv_ratio_list = conv_ratio_list,
+        fc_ratio_list = fc_ratio_list,
         no_sharing=args.no_share_initial,
         macro_width=args.macro_width,
-        args=args,distance_boundary=args.boundary )
+        args=args,distance_boundary=args.boundary
+    )
     
     if args.validate:
         # Validation Only

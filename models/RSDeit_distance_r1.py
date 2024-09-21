@@ -53,6 +53,7 @@ def compute_column_distances_r1(A, B, dist_type="euclidean"):
 def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_height=768, flow = "row", dist_type="euclidean"):
     # Ensure matrix is a 2D tensor of shape (N, D)
     assert matrix.ndim == 2
+    # mask: 47 * 768
 
     width, height = matrix.shape
     upd_time_col = height // macro_height
@@ -68,6 +69,9 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
                 dist = torch.mean(compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[0:macro_width,(upd_col+1)*macro_height:(upd_col+2)*macro_height], dist_type=dist_type) * mask[upd])
             else:
                 dist = torch.mean(compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height], dist_type=dist_type) * mask[upd])
+
+                tmp = compute_column_distances_r1(matrix[upd_row*macro_width:(upd_row+1)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height],matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width,upd_col*macro_height:(upd_col+1)*macro_height], dist_type=dist_type)
+            
             dist_list.append(dist)
     elif flow == "column":
         for upd in range(upd_time_row*upd_time_col-1):

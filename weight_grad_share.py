@@ -259,6 +259,7 @@ def determin_boundary(weight, share_height = 768,macro_width = 64, flow = "row",
 
 def weight_share_all(model,qkv_ratio,fc1_ratio,fc2_ratio, no_sharing=False,macro_width=64,args=None,distance_boundary = 100.0, set_mask = True):
     boundary_list = [distance_boundary]*12
+    print("boundary_list:", boundary_list)
     sharing_block_list = []
     train_block_list = []
     # sharing_rate_list : [(qkv_ratio*block_ratio)*4, (qkv_ratio)*4, (qkv_ratio*(2-block_ratio))*4]
