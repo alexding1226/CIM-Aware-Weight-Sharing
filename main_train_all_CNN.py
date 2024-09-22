@@ -1,17 +1,17 @@
 import argparse
-from CNN.CNN_utils import *
-import CNN.CNN_losses as losses
-from CNN.CNN_weight_grad_share import *
-
 import torch
-from CNN.CNN_Imagenet_dataset import CNN_ImagenetDataset
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR
+from torch.utils.data import DataLoader, RandomSampler
+
 
 from models.VGG import vgg16
 from models.VGG_teacher import vgg16_teacher
 
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR
-from torch.utils.data import DataLoader, RandomSampler
+from CNN.CNN_Imagenet_dataset import CNN_ImagenetDataset
+from CNN.CNN_utils import *
+from CNN.CNN_weight_grad_share import *
+import CNN.CNN_losses as losses
 
 
 def get_parser():
@@ -80,7 +80,7 @@ def get_parser():
     parser.add_argument("--macro_height", type=int, default=64)
     parser.add_argument("--share_height_type", type=str, default="whole") # whole or macro. whole means the sharing height meets the weight height, macro means the sharing height is the macro height
     parser.add_argument("--flow", type=str, default="row") # define the direction of sharing, row or column
-    parser.add_argument("--boundary",type=float,default=100.0)
+    parser.add_argument("--boundary",type=float,default=0.01)
     parser.add_argument("--min_sharing_rate_per_macro",type=float,default=0.8) # ex: 0.8 means that at least 0.8 * share_ratio of rows in one macro should be shared (0.8 * 0.5 = 0.4, 26 in 64 rows should be shared as a minimum amount)
 
     parser.add_argument("--dist_type", type=str, default="euclidean")
@@ -216,7 +216,7 @@ def main():
         fc_ratio_list = fc_ratio_list,
         no_sharing=args.no_share_initial,
         macro_width=args.macro_width,
-        args=args,distance_boundary=args.boundary
+        args=args,distance_boundary=100
     )
     
     if args.validate:

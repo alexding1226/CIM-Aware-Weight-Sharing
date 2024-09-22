@@ -55,21 +55,21 @@ def compute_column_distances_r1(A, B, dist_type="euclidean"):
     return distances
 
 def _4D_to_2D(Conv2D_weight):
-    original_weight = Conv2D_weight.clone().detach()
+    original_weight = Conv2D_weight.clone()
     out_channels, in_channels, k_h, k_w = Conv2D_weight.shape
     share_height = in_channels * k_h * k_w
     
     weight = original_weight.view(out_channels, share_height)
     assert weight.ndim == 2
-    return weight.clone().detach()
+    return weight.clone()
 
 def _2D_to_4D(Conv2D_new_weight, out_channels, in_channels, k_h, k_w):
-    new_weight = Conv2D_new_weight.clone().detach()
+    new_weight = Conv2D_new_weight.clone()
     share_height = in_channels * k_h * k_w
 
     weight = new_weight.view(out_channels, in_channels, k_h, k_w)
     assert weight.ndim == 4
-    return weight.clone().detach()
+    return weight.clone()
 
 def pad_logic():
     return """
@@ -128,8 +128,8 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
                     accumulate_dist_method
                 )
             else:
-                tmp1 = matrix[ upd_row   *macro_width:(upd_row+1)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height].clone().detach()
-                tmp2 = matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height].clone().detach()
+                tmp1 = matrix[ upd_row   *macro_width:(upd_row+1)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height]
+                tmp2 = matrix[(upd_row+1)*macro_width:(upd_row+2)*macro_width, upd_col*macro_height:(upd_col+1)*macro_height]
                 tmp = compute_column_distances_r1(tmp1, tmp2, dist_type=dist_type)
                 
                 

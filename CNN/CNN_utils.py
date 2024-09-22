@@ -258,7 +258,7 @@ def train_one_epoch(
                     fc_ratio_list=current_fc_ratio_list,
                     macro_width=args.macro_width,
                     args=args,
-                    distance_boundary=0.01,
+                    distance_boundary=args.boundary,
                     set_mask=True,
                 )
                 add_dist = False
@@ -454,6 +454,15 @@ def train_epochs(
             args=args,
         )
 
+        # print("="*20)
+        # test_idx = 0
+        # for layer in model.features:
+        #     if isinstance(layer, nn.Conv2d):
+        #         if test_idx == 12:
+        #             print(layer.weight.data[:10])
+        #         test_idx += 1
+        # print("="*20)
+
         after_share = False
 
         info = []
@@ -566,7 +575,7 @@ def train_epochs(
                 fc_ratio_list=current_fc_ratio_list,
                 macro_width=args.macro_width,
                 args=args,
-                distance_boundary=0.01,
+                distance_boundary=args.boundary,
                 set_mask=True,
             )
             # weight_grad_share.check_distance(

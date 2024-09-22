@@ -59,7 +59,7 @@ def pad_weight(weight, height, width):
     # print(f"padded upd_time_row : {upd_time_row}, upd_time_col : {upd_time_col}")    
     """
 
-    return new_weight.clone().detach()
+    return new_weight.clone()
 
 def _4D_to_2D(Conv2D_weight):
     original_weight = Conv2D_weight.clone()
@@ -82,7 +82,7 @@ def test():
     share_height = in_channels * k_h * k_w
     test_tensor = torch.rand(out_channels, in_channels, k_h, k_w)
 
-    tmp0 = _4D_to_2D(test_tensor.clone().detach())
+    tmp0 = _4D_to_2D(test_tensor.clone())
     tmp1 = _2D_to_4D(tmp0, out_channels, in_channels, k_h, k_w)
 
     assert torch.equal(tmp1, test_tensor)
@@ -111,10 +111,7 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
 
 
     if (upd_time_row == 0 and upd_time_col == 1) or (upd_time_row == 1 and upd_time_col == 0) or (upd_time_row == 1 and upd_time_col == 1):
-        return original_weight, 0, [], 0, 1
-    
-    
-    x = pad_weight(weight, mat_height, mat_width)    
+        return original_weight, 0, [], 0, 1     
 
     weight = weight.clone().detach()
 
@@ -151,10 +148,12 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
         max_no_share_row_per_macro = macro_height - int(macro_height * min_sharing_rate_per_macro * max_sharing_rate)
 
         sort_value, sort_idx = torch.sort(distances, descending=True)
+        # print("distances:", sort_value)
+
 
         no_share_row = 0
         i = 0
-        while (sort_value[i] > distance_boundary or no_share_row < num_no_sharing_row):
+        while ((sort_value[i] > distance_boundary) or (no_share_row < num_no_sharing_row)):
             idx = sort_idx[i]
             macro_idx = idx // macro_height
 
@@ -171,13 +170,25 @@ def row_sharing_vgg(weight, distance_boundary, max_sharing_rate=0.5, return_shar
                 break
 
         if not no_sharing:
-            head_weight_list[upd_time + 1][:, mask_share] = head_weight_list[upd_time][:, mask_share].clone()
+            head_weight_list[upd_time + 1][:, mask_share] = head_weight_list[upd_time][:, mask_share]
 
 
         num_sharing += sum(mask_share)
         num_train += sum(mask_train)
         
         mask_allhead.append(mask_train.to(weight.device))
+
+        '''
+        print("="*25)
+        print("max_sharing_rate : ", max_sharing_rate)
+        print("sharing row : ", sharing_row)
+        print("num_no_sharing_row : ", num_no_sharing_row)
+        print("max_no_share_row_per_macro : ", max_no_share_row_per_macro)
+        print("num_sharing : ", num_sharing)
+        print("num_train : ", num_train)
+        print("no_share_rate_per_macro : ", no_share_row_per_macro)
+        print("="*25)
+        '''
     
         # debug
         first_head_weight = head_weight_list[upd_time].clone()
@@ -294,8 +305,8 @@ def weight_share_vgg(model, conv_ratio_list, fc_ratio_list, no_sharing=False, ma
                             print(test_num)
                     """
 
-                    model.features[i].weight.data = new_weight.clone()
-                    # print("new_weight =", new_weight.shape)
+                    model.features[i].weight.data = new_weight
+                    assert model.features[i].weight.requires_grad, "weight shouldn't be fixed"
                     
                 
                 conv_sharing_block_list.append(num_sharing)
