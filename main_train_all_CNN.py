@@ -5,8 +5,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR
 from torch.utils.data import DataLoader, RandomSampler
 
 
-from models.VGG import vgg16
-from models.VGG_teacher import vgg16_teacher
+import models.VGG
+import models.VGG_teacher
 
 from CNN.CNN_Imagenet_dataset import CNN_ImagenetDataset
 from CNN.CNN_utils import *
@@ -25,6 +25,8 @@ def get_parser():
 
     # Model Config
     parser.add_argument('--model_type',default="VGG16", type=str)
+    parser.add_argument('--checkpoint_root', default="./models/ckpt/", type=str)
+    parser.add_argument('--get_structure', default=False, type=bool)
 
     # Loss Function
     parser.add_argument('--pruning_weight', type=float, default=1, metavar='W')
@@ -48,11 +50,7 @@ def get_parser():
     parser.add_argument('--train_subset_size', type=int, default=-1, metavar='N')
     parser.add_argument('--train_batch_size', type=int, default=64, metavar='B')
     parser.add_argument('--save_checkpoint', type=str, default='checkpoint.pt')
-    # MARK: Seems no use
-    """ 
-    parser.add_argument('--train_classifier', action='store_true')   
-    parser.add_argument('--train_selectors', action='store_true')
-    """
+
     parser.add_argument('--best_acc', type=float, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
 
@@ -84,9 +82,7 @@ def get_parser():
     parser.add_argument("--min_sharing_rate_per_macro",type=float,default=0.8) # ex: 0.8 means that at least 0.8 * share_ratio of rows in one macro should be shared (0.8 * 0.5 = 0.4, 26 in 64 rows should be shared as a minimum amount)
 
     parser.add_argument("--dist_type", type=str, default="euclidean")
-    # parser.add_argument("--block_ratio", type=float, default=1.0) # first 4 blocks are block ratio * share_ratio, middle 4 blocks are share_ratio, last 4 blocks are (2 - block ratio) * share_ratio
 
-    # parser.add_argument("--load_qkv_mask", type=str, default=None)
 
     parser.add_argument("--saving_every_step", type=int, default=2000)
     
@@ -144,31 +140,56 @@ def get_ratio_list(args_ratio_list = [], desired_length = 0, to_pad = 0):
             return args_ratio_list[:desired_length]
 
 
-def main():
-
-    set_seed(2357)
-    parser = get_parser()
-    args = parser.parse_args()
-    device = torch.device(args.device)
-
-
-    # File Path
-    val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
-    PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16-397923af.pth' if args.model_type == 'VGG16' else None
-    # PATH = '/home/remote/LDAP/r13_pony-1000035/ckpt/vgg16_features-amdegroot-88682ab5.pth' if args.model_type == 'VGG16' else None
-    checkpoint = torch.load(PATH, weights_only=True)    
-
-    model = vgg16()           ; model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
-    teacher = vgg16_teacher() ; teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+def getCheckpoint(root: str, model_type: str):
+    filename = ""
+    if model_type.lower() == "vgg11":    filename = "vgg11-8a719046.pth"
+    if model_type.lower() == "vgg13":    filename = "vgg13-19584684.pth"
+    if model_type.lower() == "vgg16":    filename = "vgg16-397923af.pth"
+    if model_type.lower() == "vgg19":    filename = "vgg19-dcbb9e9d.pth"
     
-    loss_fn = losses.CNNLoss(
-        pred_weight=args.pred_weight, 
-        soft_weight=args.soft_weight, 
-        dist_weight=args.dist_weight, 
-        Ar=args.Ar,
-        teacher=teacher
-    )
+    PATH = os.path.join(root, filename)
 
+    if not os.path.isdir(root):
+        os.mkdir(root)
+
+    if not os.path.isfile(PATH):
+        # get from internet to root directory
+        url = f"https://download.pytorch.org/models/{filename}"
+        torch.hub.download_url_to_file(url, PATH)
+
+    return torch.load(PATH)
+
+def getModel(ckpt_root: str = "", device: any = None, model_type: str = ""):
+    checkpoint = getCheckpoint(ckpt_root, model_type)
+
+    if model_type.lower() == "vgg11":
+        model = models.VGG.vgg11()
+        teacher = models.VGG_teacher.vgg11_teacher()
+        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+
+    if model_type.lower() == "vgg13":
+        model = models.VGG.vgg13()
+        teacher = models.VGG_teacher.vgg13_teacher()
+        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+    
+    if model_type.lower() == "vgg16":
+        model = models.VGG.vgg16()
+        teacher = models.VGG_teacher.vgg16_teacher()
+        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+    
+    if model_type.lower() == "vgg19":
+        model = models.VGG.vgg19()
+        teacher = models.VGG_teacher.vgg19_teacher()
+        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+
+
+    return model, teacher
+
+def printModelInfo(model):
     print("Conv2D:")
     total_conv_layers = 0
     total_fc_layers = 0
@@ -182,15 +203,39 @@ def main():
             total_fc_layers += 1
             print("\t", layer.weight.shape)
 
+    return total_conv_layers, total_fc_layers
+    
+
+def main():
+
+    set_seed(2357)
+    parser = get_parser()
+    args = parser.parse_args()
+    device = torch.device(args.device)
+    val_catlog = 'val_list_10k.txt' if args.reduced_val else 'val_list.txt'
+
+
+    model, teacher = getModel(args.checkpoint_root, device, args.model_type)
+
+    loss_fn = losses.CNNLoss(
+        pred_weight=args.pred_weight, 
+        soft_weight=args.soft_weight, 
+        dist_weight=args.dist_weight, 
+        Ar=args.Ar,
+        teacher=teacher
+    )
+
+    total_conv_layers, total_fc_layers = printModelInfo(model)
+
+    if args.get_structure:  return  # get model's structure
+
+
     conv_ratio_list = get_ratio_list(args.conv_ratio_list, total_conv_layers, args.conv_ratio)
     fc_ratio_list = get_ratio_list(args.fc_ratio_list, total_fc_layers, args.fc_ratio)
 
+    # update conv_ratio_list and fc_ratio_list in args
     args.conv_ratio_list = conv_ratio_list
     args.fc_ratio_list = fc_ratio_list
-
-    print(f"Conv ratio list: {args.conv_ratio_list}")
-    print(f"FC ratio list: {args.fc_ratio_list}")
-
 
     last_progress = torch.load('progress.pt') if args.resume else {}
     start_epoch = last_progress['epoch'] if args.resume else args.start_epoch

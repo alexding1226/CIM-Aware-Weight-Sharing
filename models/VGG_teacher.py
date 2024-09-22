@@ -17,11 +17,11 @@ import torch
 from torch import Tensor
 from torch import nn
 
-__all__ = [
-    "VGG",
-    "vgg11", "vgg13", "vgg16", "vgg19",
-    "vgg11_bn", "vgg13_bn", "vgg16_bn", "vgg19_bn",
-]
+# __all__ = [
+#     "VGG",
+#     "vgg11", "vgg13", "vgg16", "vgg19",
+#     "vgg11_bn", "vgg13_bn", "vgg16_bn", "vgg19_bn",
+# ]
 
 vgg_cfgs: Dict[str, List[Union[str, int]]] = {
     "vgg11": [64, "M", 128, "M", 256, 256, "M", 512, 512, "M", 512, 512, "M"],
@@ -52,9 +52,9 @@ def _make_layers(vgg_cfg: List[Union[str, int]], batch_norm: bool = False) -> nn
     return layers
 
 
-class VGG(nn.Module):
+class VGG_teacher(nn.Module):
     def __init__(self, vgg_cfg: List[Union[str, int]], batch_norm: bool = False, num_classes: int = 1000) -> None:
-        super(VGG, self).__init__()
+        super(VGG_teacher, self).__init__()
         self.features = _make_layers(vgg_cfg, batch_norm)
 
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
@@ -98,49 +98,49 @@ class VGG(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
 
-def vgg11(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg11"], False, **kwargs)
+def vgg11_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg11"], False, **kwargs)
 
     return model
 
 
-def vgg13(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg13"], False, **kwargs)
+def vgg13_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg13"], False, **kwargs)
 
     return model
 
 
-def vgg16_teacher(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg16"], False, **kwargs)
+def vgg16_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg16"], False, **kwargs)
 
     return model
 
 
-def vgg19(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg19"], False, **kwargs)
+def vgg19_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg19"], False, **kwargs)
 
     return model
 
 
-def vgg11_bn(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg11"], True, **kwargs)
+def vgg11_bn_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg11"], True, **kwargs)
 
     return model
 
 
-def vgg13_bn(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg13"], True, **kwargs)
+def vgg13_bn_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg13"], True, **kwargs)
 
     return model
 
 
-def vgg16_bn(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg16"], True, **kwargs)
+def vgg16_bn(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg16"], True, **kwargs)
 
     return model
 
 
-def vgg19_bn(**kwargs) -> VGG:
-    model = VGG(vgg_cfgs["vgg19"], True, **kwargs)
+def vgg19_bn_teacher(**kwargs) -> VGG_teacher:
+    model = VGG_teacher(vgg_cfgs["vgg19"], True, **kwargs)
 
     return model
