@@ -321,9 +321,7 @@ def weight_share_resnet(model, conv_ratio_list, fc_ratio_list, no_sharing=False,
                         for _ in range(100):
                             print(test_num)
                     """
-
-                    model.features[i].weight.data = new_weight
-                    assert model.features[i].weight.requires_grad, "weight shouldn't be fixed"
+                    layer.weight.data = new_weight
                     
                 
                 conv_sharing_block_list.append(num_sharing)
@@ -365,7 +363,7 @@ def weight_share_resnet(model, conv_ratio_list, fc_ratio_list, no_sharing=False,
                     share_height=share_height, min_sharing_rate_per_macro=args.min_sharing_rate_per_macro, is_conv=False
                 )
                 if not no_sharing:
-                    model.classifier[i].weight.data = weight.clone()
+                    layer.weight.data = weight.clone()
                     
                 fc_sharing_block_list.append(num_sharing)
                 fc_train_block_list.append(num_train)

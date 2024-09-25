@@ -251,7 +251,7 @@ class Resnet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         dist = torch.zeros(1).to(x.device)
-        return self._forward_impl(x), dist
+        return self._forward_impl(x)
 
 def _resnet(
     block: Type[Union[BasicBlock, Bottleneck]],

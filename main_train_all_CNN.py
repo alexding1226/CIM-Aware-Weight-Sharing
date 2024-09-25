@@ -259,7 +259,7 @@ def get_loss_fn(args = None, teacher = None):
             soft_weight=args.soft_weight, 
             dist_weight=args.dist_weight, 
             Ar=args.Ar,
-            # teacher=teacher
+            teacher=teacher
         )
     else:   raise NotImplementedError
 
