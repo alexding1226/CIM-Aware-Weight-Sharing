@@ -3,7 +3,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-class CNN_ImagenetDataset(Dataset):
+class VGG_ImagenetDataset(Dataset):
     def __init__(self, root_path, listfile, image_size=(224, 224), augamentation=False, dataset_type = "train"):
         self.image_list = []
         self.label_list = []

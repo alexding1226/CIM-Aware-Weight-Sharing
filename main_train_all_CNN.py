@@ -1,4 +1,6 @@
 import argparse
+import models.Resnet
+import models.Resnet_teacher
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR
@@ -8,10 +10,15 @@ from torch.utils.data import DataLoader, RandomSampler
 import models.VGG
 import models.VGG_teacher
 
-from CNN.CNN_Imagenet_dataset import CNN_ImagenetDataset
-from CNN.CNN_utils import *
-from CNN.CNN_weight_grad_share import *
-import CNN.CNN_losses as losses
+from VGG.VGG_Imagenet_dataset import VGG_ImagenetDataset
+import VGG.VGG_utils
+from VGG.VGG_weight_grad_share import *
+from VGG.VGG_losses import VGGLoss
+
+from Resnet.Resnet_Imagenet_dataset import Resnet_ImagenetDataset
+import Resnet.Resnet_utils
+from Resnet.Resnet_weight_grad_share import * 
+from Resnet.Resnet_losses import ResnetLoss
 
 
 def get_parser():
@@ -107,7 +114,7 @@ def get_parser():
 def get_dataloader(catlog_path, subset_size=None, batch_size=16, augamentation=False):
     root_path = '/home/common/SharedDataset/ImageNet'
     num_workers = min(32, batch_size)
-    dataset = CNN_ImagenetDataset(root_path, catlog_path, augamentation=augamentation)
+    dataset = VGG_ImagenetDataset(root_path, catlog_path, augamentation=augamentation)
     print("dataset length:",len(dataset))
     if subset_size is None:
         dataloader = DataLoader(
@@ -146,7 +153,12 @@ def getCheckpoint(root: str, model_type: str):
     if model_type.lower() == "vgg13":    filename = "vgg13-19584684.pth"
     if model_type.lower() == "vgg16":    filename = "vgg16-397923af.pth"
     if model_type.lower() == "vgg19":    filename = "vgg19-dcbb9e9d.pth"
-    
+    if model_type.lower() == "resnet18": filename = "resnet18-f37072fd.pth"
+    if model_type.lower() == "resnet34": filename = "resnet34-b627a593.pth"
+    if model_type.lower() == "resnet50": filename = "resnet50-0676ba61.pth"
+
+
+    if filename == "":  raise NotImplementedError
     PATH = os.path.join(root, filename)
 
     if not os.path.isdir(root):
@@ -160,51 +172,97 @@ def getCheckpoint(root: str, model_type: str):
     return torch.load(PATH)
 
 def getModel(ckpt_root: str = "", device: any = None, model_type: str = ""):
+    valid_model_list = ["vgg11", "vgg13", "vgg16", "vgg19", "resnet18", "resnet34", "resnet50"]
+    if model_type.lower() not in valid_model_list: raise NotImplementedError
+
     checkpoint = getCheckpoint(ckpt_root, model_type)
 
     if model_type.lower() == "vgg11":
         model = models.VGG.vgg11()
         teacher = models.VGG_teacher.vgg11_teacher()
-        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
-        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
 
     if model_type.lower() == "vgg13":
         model = models.VGG.vgg13()
         teacher = models.VGG_teacher.vgg13_teacher()
-        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
-        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
     
     if model_type.lower() == "vgg16":
         model = models.VGG.vgg16()
         teacher = models.VGG_teacher.vgg16_teacher()
-        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
-        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
     
     if model_type.lower() == "vgg19":
         model = models.VGG.vgg19()
         teacher = models.VGG_teacher.vgg19_teacher()
-        model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
-        teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
+
+    if model_type.lower() == "resnet18":
+        model = models.Resnet.resnet18()
+        teacher = models.Resnet_teacher.resnet18_teacher()
+    
+    if model_type.lower() == "resnet34":
+        model = models.Resnet.resnet34()
+        teacher = models.Resnet_teacher.resnet34_teacher()
+    
+    if model_type.lower() == "resnet50":
+        model = models.Resnet.resnet50()
+        teacher = models.Resnet_teacher.resnet50_teacher()
+
+
+    model.to(device)   ; model.eval()   ; model.load_state_dict(checkpoint)
+    teacher.to(device) ; teacher.eval() ; teacher.load_state_dict(checkpoint)
 
 
     return model, teacher
 
-def printModelInfo(model):
-    print("Conv2D:")
-    total_conv_layers = 0
-    total_fc_layers = 0
-    for layer in model.features:
-        if isinstance(layer, nn.Conv2d):
-            total_conv_layers += 1
-            print("\t", layer.weight.shape)
-    print("Linear:")
-    for layer in model.classifier:
-        if isinstance(layer, nn.Linear):
-            total_fc_layers += 1
-            print("\t", layer.weight.shape)
+def printModelInfo(model_type, model):
+    if "vgg" in model_type.lower():
+        print("Conv2D:")
+        total_conv_layers = 0
+        total_fc_layers = 0
+        for layer in model.features:
+            if isinstance(layer, nn.Conv2d):
+                total_conv_layers += 1
+                print("\t", layer.weight.shape)
+        print("Linear:")
+        for layer in model.classifier:
+            if isinstance(layer, nn.Linear):
+                total_fc_layers += 1
+                print("\t", layer.weight.shape)
+    elif "resnet" in model_type.lower():
+        print("Conv2D:")
+        total_conv_layers = 0
+        total_fc_layers = 0
+        for layer in model.modules():
+            if isinstance(layer, nn.Conv2d):
+                total_conv_layers += 1
+                print("\t", layer.weight.shape)
+        print("Linear:")
+        for layer in model.modules():
+            if isinstance(layer, nn.Linear):
+                total_fc_layers += 1
+                print("\t", layer.weight.shape)
+    else:
+        return 0, 0
 
     return total_conv_layers, total_fc_layers
-    
+
+def get_loss_fn(args = None, teacher = None):
+    if "vgg" in args.model_type.lower():
+        return VGGLoss(
+            pred_weight=args.pred_weight, 
+            soft_weight=args.soft_weight, 
+            dist_weight=args.dist_weight, 
+            Ar=args.Ar,
+            teacher=teacher
+        )
+    elif "resnet" in args.model_type.lower():
+        return ResnetLoss(
+            pred_weight=args.pred_weight, 
+            soft_weight=args.soft_weight, 
+            dist_weight=args.dist_weight, 
+            Ar=args.Ar,
+            # teacher=teacher
+        )
+    else:   raise NotImplementedError
+
 
 def main():
 
@@ -217,15 +275,9 @@ def main():
 
     model, teacher = getModel(args.checkpoint_root, device, args.model_type)
 
-    loss_fn = losses.CNNLoss(
-        pred_weight=args.pred_weight, 
-        soft_weight=args.soft_weight, 
-        dist_weight=args.dist_weight, 
-        Ar=args.Ar,
-        teacher=teacher
-    )
+    loss_fn = get_loss_fn(args=args, teacher=teacher)
 
-    total_conv_layers, total_fc_layers = printModelInfo(model)
+    total_conv_layers, total_fc_layers = printModelInfo(args.model_type, model)
 
     if args.get_structure:  return  # get model's structure
 
@@ -254,19 +306,35 @@ def main():
         print(validate(model, device, val_dataloader, loss_fn, start_epoch))
         return
 
-    print("start sharing")
-    weight_share_vgg(
-        model=model,
-        conv_ratio_list = conv_ratio_list,
-        fc_ratio_list = fc_ratio_list,
-        no_sharing=args.no_share_initial,
-        macro_width=args.macro_width,
-        args=args,distance_boundary=100
-    )
+    print("Activate weight_share function")
+    if "vgg" in args.model_type:
+        weight_share_vgg(
+            model=model,
+            conv_ratio_list = conv_ratio_list,
+            fc_ratio_list = fc_ratio_list,
+            no_sharing=args.no_share_initial,
+            macro_width=args.macro_width,
+            args=args,distance_boundary=100
+        )
+    elif "resnet" in args.model_type:
+        weight_share_resnet(
+            model=model,
+            conv_ratio_list = conv_ratio_list,
+            fc_ratio_list = fc_ratio_list,
+            no_sharing=args.no_share_initial,
+            macro_width=args.macro_width,
+            args=args,distance_boundary=100
+        )
+    else:
+        raise NotImplementedError
     
     if args.validate:
         # Validation Only
         val_dataloader = get_dataloader(val_catlog, batch_size=args.val_batch_size)
+        
+        if "vgg" in args.model_type:        from VGG.VGG_utils import validate
+        elif "resnet" in args.model_type:   from Resnet.Resnet_utils import validate
+        else:   raise NotImplementedError
         print(validate(model, device, val_dataloader, loss_fn, start_epoch))
 
     else:
@@ -296,25 +364,45 @@ def main():
         else:
             best_acc = -1
 
+        if "vgg" in args.model_type:
+            VGG.VGG_utils.train_epochs(
+                model, 
+                args.device, 
+                train_dataloader, 
+                val_dataloader, 
+                eval_dataloader, 
+                loss_fn, 
+                optimizer, 
+                scheduler, 
+                teacher=teacher, 
+                epochs=(start_epoch+1, args.epoch), 
+                current_best_acc=best_acc, 
+                log_dir=args.log_dir, 
+                checkpoint=args.save_checkpoint, 
+                epoch_callback=VGG.VGG_utils.epoch_callback,
+                checkpoint_dir=args.checkpoint_dir,
+                args=args
+            )
 
-        train_epochs(
-            model, 
-            args.device, 
-            train_dataloader, 
-            val_dataloader, 
-            eval_dataloader, 
-            loss_fn, 
-            optimizer, 
-            scheduler, 
-            teacher=teacher, 
-            epochs=(start_epoch+1, args.epoch), 
-            current_best_acc=best_acc, 
-            log_dir=args.log_dir, 
-            checkpoint=args.save_checkpoint, 
-            epoch_callback=epoch_callback,
-            checkpoint_dir=args.checkpoint_dir,
-            args=args
-        )
+        if "resnet" in args.model_type:
+            Resnet.Resnet_utils.train_epochs(
+                model, 
+                args.device, 
+                train_dataloader, 
+                val_dataloader, 
+                eval_dataloader, 
+                loss_fn, 
+                optimizer, 
+                scheduler, 
+                teacher=teacher, 
+                epochs=(start_epoch+1, args.epoch), 
+                current_best_acc=best_acc, 
+                log_dir=args.log_dir, 
+                checkpoint=args.save_checkpoint, 
+                epoch_callback=Resnet.Resnet_utils.epoch_callback,
+                checkpoint_dir=args.checkpoint_dir,
+                args=args
+            )
 
 
     # for module in model.modules():

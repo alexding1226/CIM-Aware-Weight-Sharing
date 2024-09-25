@@ -1,16 +1,11 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms, utils
 
 import os, time
 from tqdm.autonotebook import tqdm
 
-from CNN.CNN_weight_grad_share import *
+from Resnet.Resnet_weight_grad_share import *
 
-import torch.autograd.profiler as profiler
 
 
 
@@ -252,7 +247,7 @@ def train_one_epoch(
                 print("Current fc ratio list: ", current_fc_ratio_list)
 
                 print("start sharing")
-                weight_share_vgg(
+                weight_share_resnet(
                     model=model,
                     conv_ratio_list=current_conv_ratio_list,
                     fc_ratio_list=current_fc_ratio_list,
@@ -268,7 +263,7 @@ def train_one_epoch(
         agg_loss_detail[loss_term] /= data_num
     agg_acc /= data_num
 
-    print("End Weight Sharing VGG")
+    print("End Weight Sharing Resnet")
     return (
         agg_acc,
         agg_loss,
@@ -569,7 +564,7 @@ def train_epochs(
             #     distance_boundary=args.check_distance_value,
             # )
             print("start sharing")
-            weight_share_vgg(
+            weight_share_resnet(
                 model=model,
                 conv_ratio_list=current_conv_ratio_list,
                 fc_ratio_list=current_fc_ratio_list,

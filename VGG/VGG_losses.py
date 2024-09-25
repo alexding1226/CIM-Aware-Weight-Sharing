@@ -49,7 +49,7 @@ def cal_hidden_relation_loss(student_hidden_list, teacher_hidden_list):
     return hidden_loss/layer_num
 
 
-class CNNLoss(nn.Module):
+class VGGLoss(nn.Module):
     def __init__(self, pred_weight, soft_weight, dist_weight, Ar, teacher=None):
         super().__init__()
         self.pred_weight = pred_weight #0 in minivit        

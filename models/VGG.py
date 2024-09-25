@@ -96,7 +96,7 @@ def pad_logic():
         upd_time_col = max(1, mat_height // macro_height)  # Ensure at least 1
 """
 
-def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_height: int = 64, flow: str = "row", dist_type: str ="euclidean", is_conv: bool = True, accumulate_dist_method: str = "mean", test_mode: bool = False):
+def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_height: int = 64, flow: str = "row", dist_type: str ="euclidean", is_conv: bool = True, accumulate_dist_method: str = "mean", test_mode: bool = False, real_macro_height: int = 64):
 
     if is_conv: matrix = _4D_to_2D(matrix)
     
@@ -105,7 +105,8 @@ def compute_distances_inside_matrix(matrix, mask=None, macro_width=64, macro_hei
     upd_time_col = height // macro_height
     upd_time_row = width // macro_width
 
-
+    if len(mask) == 0: return 0
+    if macro_height < real_macro_height: return 0
     if upd_time_row*upd_time_col-1 <= 0:    return 0
 
     def accumulate_dist_function(dist_list, accumulate_dist_method):
@@ -299,7 +300,7 @@ class VGG(nn.Module):
                 out_channels, in_channels, k_h, k_w = weight.shape
 
                 share_height = in_channels*k_w*k_h
-                layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, True)
+                layer_dist = compute_distances_inside_matrix(weight, conv_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, True, "mean", False, self.macro_height)
                 
                 dist_list.append(layer_dist)
                 idx += 1
@@ -314,7 +315,7 @@ class VGG(nn.Module):
                 weight = linear_layer.weight
                 w, h = weight.shape
                 share_height = h
-                layer_dist = compute_distances_inside_matrix(weight, fc_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, False)
+                layer_dist = compute_distances_inside_matrix(weight, fc_mask[idx], self.macro_width, share_height, self.flow, self.dist_type, False, "mean", False, self.macro_height)
                 dist_list.append(layer_dist)
                 idx += 1
 
